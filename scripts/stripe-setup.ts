@@ -7,7 +7,7 @@
 //   - One billing Meter 'overage_minutes' (sum), which the metered price bills
 //     at $0.35/min. Usage lands via meter events from the daily cron.
 //
-//   npm run stripe-setup   (requires 0005_billing.sql applied)
+//   npm run stripe-setup   (run `npm run migrate` first — needs 0005_billing.sql)
 
 import 'dotenv/config'
 import { config } from 'dotenv'
@@ -54,9 +54,9 @@ async function main() {
   const db = serviceClient()
 
   const { data: plans, error } = await db.from('plans').select('id, name, price_cents')
-  if (error || !plans?.length) throw new Error(`plans: ${error?.message ?? 'empty'} — apply migrations first`)
+  if (error || !plans?.length) throw new Error(`plans: ${error?.message ?? 'empty'} — run \`npm run migrate\` first`)
   if (plans.some((p) => p.price_cents < 10_000)) {
-    throw new Error('plans.price_cents looks like dollars — apply 0005_billing.sql first')
+    throw new Error('plans.price_cents looks like dollars — run `npm run migrate` (needs 0005_billing.sql)')
   }
 
   const products = (await stripe.products.list({ active: true, limit: 100 })).data

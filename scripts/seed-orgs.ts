@@ -24,7 +24,7 @@ async function main() {
   const db = serviceClient()
 
   const { data: plans, error: plansErr } = await db.from('plans').select('id, included_minutes')
-  if (plansErr) throw new Error(`plans: ${plansErr.message} — did you apply 0004_orgs_rls.sql?`)
+  if (plansErr) throw new Error(`plans: ${plansErr.message} — run \`npm run migrate\` (needs 0004_orgs_rls.sql)`)
 
   const orgIds: string[] = []
   const userIds: string[] = []

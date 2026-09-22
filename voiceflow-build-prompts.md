@@ -14,7 +14,8 @@ Twilio integration). Our code NEVER touches audio.
 
 STACK (do not deviate without asking):
 - Turborepo monorepo: apps/web (Next.js 15 App Router, TypeScript, Tailwind, shadcn/ui),
-  packages/engine (provider adapter), packages/db (Supabase client + types + SQL migrations)
+  packages/engine (provider adapter), packages/db (Supabase client + types + SQL migrations —
+  packages/db/migrations is the ONLY schema source; apply with `npm run migrate`)
 - Supabase: Postgres + Auth + Storage. All tenant tables have org_id with RLS.
 - Stripe Billing, Twilio (numbers only), ElevenLabs Agents API, Sentry, Inngest (Phase 6+).
 - Deploy: Vercel. Env vars via .env.local, validated with zod in a single env.ts.
