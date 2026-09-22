@@ -1,5 +1,5 @@
 {
-  "name": "@airtalk/engine",
+  "name": "@voiceflow/engine",
   "version": "0.0.0",
   "private": true,
   "main": "./src/index.ts",

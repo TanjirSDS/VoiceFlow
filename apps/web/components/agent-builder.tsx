@@ -4,7 +4,7 @@
 // source of truth; Save = one engine.updateAgent + one new version row. Owns the
 // edit state; the server page keys this by current version so a rollback/save
 // remounts it with fresh data.
-import type { Voice } from '@airtalk/engine'
+import type { Voice } from '@voiceflow/engine'
 import {
   CALL_DEFAULTS,
   DEFAULT_ANALYSIS,
@@ -16,7 +16,7 @@ import {
   validateWorkflow,
   type WorkflowGraph,
   type WorkflowKb,
-} from '@airtalk/engine/templates'
+} from '@voiceflow/engine/templates'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from 'react'
@@ -261,7 +261,7 @@ export function AgentBuilder({
       {/* Metadata strip — hidden for flow agents to give the full-bleed canvas the room. */}
       {!isFlow && (
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border bg-card px-4 py-2.5 text-xs">
-          <CopyField label="Airtalk ID" value={agentId} />
+          <CopyField label="VoiceFlow ID" value={agentId} />
           <CopyField label="Provider ID" value={providerAgentId ?? undefined} />
           <span className="text-muted-foreground">
             <span className="font-medium text-foreground">${(rate.includedCentsPerMin / 100).toFixed(2)}/min</span>{' '}

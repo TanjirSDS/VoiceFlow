@@ -13,7 +13,7 @@ import {
   setSection,
   togglePreset,
   type HandbookTab,
-} from '@airtalk/engine/templates'
+} from '@voiceflow/engine/templates'
 import { useState } from 'react'
 import { ClockIcon } from './icons'
 import { Button } from './ui/button'

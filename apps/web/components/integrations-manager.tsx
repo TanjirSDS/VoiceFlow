@@ -232,7 +232,7 @@ function WebhooksSection({ endpoints }: { endpoints: EndpointRow[] }) {
             <div className="space-y-4">
               <div className="space-y-1">
                 <Label htmlFor="ep-url">Endpoint URL (https)</Label>
-                <Input id="ep-url" placeholder="https://example.com/hooks/airtalk" value={url} onChange={(e) => setUrl(e.target.value)} />
+                <Input id="ep-url" placeholder="https://example.com/hooks/voiceflow" value={url} onChange={(e) => setUrl(e.target.value)} />
               </div>
               <div className="space-y-1.5">
                 <Label>Events to send</Label>
@@ -252,7 +252,7 @@ function WebhooksSection({ endpoints }: { endpoints: EndpointRow[] }) {
             <div className="space-y-2">
               <p className="text-sm">
                 Copy your signing secret now — it&apos;s shown once. Verify deliveries with the{' '}
-                <code className="rounded bg-muted px-1">airtalk-signature</code> header.
+                <code className="rounded bg-muted px-1">voiceflow-signature</code> header.
               </p>
               <code className="block break-all rounded-md border bg-muted px-3 py-2 text-xs">{newSecret}</code>
             </div>

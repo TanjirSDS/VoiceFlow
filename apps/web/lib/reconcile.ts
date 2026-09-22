@@ -1,5 +1,5 @@
-import type { SupabaseClient } from '@airtalk/db'
-import type { ProviderCall, VoiceEngine } from '@airtalk/engine'
+import type { SupabaseClient } from '@voiceflow/db'
+import type { ProviderCall, VoiceEngine } from '@voiceflow/engine'
 import { backfillOrgContacts } from './contacts'
 import { currentPeriodUsage, pauseOrgAgents } from './usage'
 import { enqueueWebhookEvent } from './webhooks-out'

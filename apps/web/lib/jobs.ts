@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react'
-import { getEnv, serviceClient } from '@airtalk/db'
-import { suggestionTitle } from '@airtalk/engine/templates'
+import { getEnv, serviceClient } from '@voiceflow/db'
+import { suggestionTitle } from '@voiceflow/engine/templates'
 import {
   AgentLearningEmail,
   PaymentFailedEmail,
@@ -170,7 +170,7 @@ async function emailOwners(orgId: string, subject: string, build: (orgName: stri
 const welcomeEmail = inngest.createFunction(
   { id: 'email-welcome', onFailure: deadLetter, triggers: [{ event: 'org/created' }] },
   ({ event }) =>
-    emailOwners(event.data.orgId as string, 'Welcome to Airtalk', (orgName) =>
+    emailOwners(event.data.orgId as string, 'Welcome to VoiceFlow', (orgName) =>
       WelcomeEmail({ orgName, appUrl: appUrl() })
     )
 )
@@ -178,7 +178,7 @@ const welcomeEmail = inngest.createFunction(
 const usageWarnEmail = inngest.createFunction(
   { id: 'email-usage-warn', onFailure: deadLetter, triggers: [{ event: 'usage/warned' }] },
   ({ event }) =>
-    emailOwners(event.data.orgId as string, 'Airtalk: 80% of your minutes used', (orgName) =>
+    emailOwners(event.data.orgId as string, 'VoiceFlow: 80% of your minutes used', (orgName) =>
       UsageWarnEmail({
         orgName,
         minutesUsed: event.data.minutesUsed as number,
@@ -191,7 +191,7 @@ const usageWarnEmail = inngest.createFunction(
 const usageCappedEmail = inngest.createFunction(
   { id: 'email-usage-capped', onFailure: deadLetter, triggers: [{ event: 'usage/capped' }] },
   ({ event }) =>
-    emailOwners(event.data.orgId as string, 'Airtalk: minute cap reached', (orgName) =>
+    emailOwners(event.data.orgId as string, 'VoiceFlow: minute cap reached', (orgName) =>
       UsageCappedEmail({
         orgName,
         capMinutes: event.data.capMinutes as number,
@@ -204,7 +204,7 @@ const usageCappedEmail = inngest.createFunction(
 const paymentFailedEmail = inngest.createFunction(
   { id: 'email-payment-failed', onFailure: deadLetter, triggers: [{ event: 'billing/payment-failed' }] },
   ({ event }) =>
-    emailOwners(event.data.orgId as string, 'Airtalk: payment failed — action needed', (orgName) =>
+    emailOwners(event.data.orgId as string, 'VoiceFlow: payment failed — action needed', (orgName) =>
       PaymentFailedEmail({ orgName, graceDays: DUNNING_GRACE_DAYS, appUrl: appUrl() })
     )
 )
@@ -243,7 +243,7 @@ const weeklySummary = inngest.createFunction(
         const to = await orgOwnerEmails(db, org.id)
         return sendEmail(
           to,
-          'Your week on Airtalk',
+          'Your week on VoiceFlow',
           WeeklySummaryEmail({
             orgName: org.name,
             calls: calls.length,

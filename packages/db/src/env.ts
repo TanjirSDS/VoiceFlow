@@ -26,9 +26,9 @@ const schema = z.object({
   SENTRY_DSN: z.string().url().optional(),
   /** Optional: transactional email (Phase 6) is skipped when absent. */
   RESEND_API_KEY: z.string().min(1).optional(),
-  /** Optional: From header for transactional email, e.g. 'Airtalk <hello@airtalk.io>'. */
+  /** Optional: From header for transactional email, e.g. 'VoiceFlow <hello@voiceflow.io>'. */
   EMAIL_FROM: z.string().min(1).optional(),
-  /** Optional: absolute origin used in email links, e.g. https://app.airtalk.io. */
+  /** Optional: absolute origin used in email links, e.g. https://app.voiceflow.io. */
   APP_URL: z.string().url().optional(),
   /** Optional: Inngest (Phase 6 async jobs). Without them the SDK runs in dev mode. */
   INNGEST_EVENT_KEY: z.string().min(1).optional(),

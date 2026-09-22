@@ -1,5 +1,5 @@
-import type { SupabaseClient } from '@airtalk/db'
-import type { VoiceEngine } from '@airtalk/engine'
+import type { SupabaseClient } from '@voiceflow/db'
+import type { VoiceEngine } from '@voiceflow/engine'
 import { emit } from './events'
 
 export type UsageCrossing = 'warn' | 'cap' | null

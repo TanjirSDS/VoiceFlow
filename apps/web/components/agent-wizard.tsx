@@ -1,7 +1,7 @@
 'use client'
 
-import type { Voice } from '@airtalk/engine'
-import { buildAgentConfig, TEMPLATE_INFO, type TemplateKey } from '@airtalk/engine/templates'
+import type { Voice } from '@voiceflow/engine'
+import { buildAgentConfig, TEMPLATE_INFO, type TemplateKey } from '@voiceflow/engine/templates'
 import { useState, useTransition } from 'react'
 import { createAgentAction } from '../app/agents/actions'
 import {

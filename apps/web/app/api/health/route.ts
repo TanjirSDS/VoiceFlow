@@ -1,4 +1,4 @@
-import { serviceClient } from '@airtalk/db'
+import { serviceClient } from '@voiceflow/db'
 import { makeEngine } from '../../../lib/engine'
 import { appProbes, runHealthChecks } from '../../../lib/health'
 import { stripeClient } from '../../../lib/stripe'

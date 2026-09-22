@@ -2,8 +2,8 @@
 import { config } from 'dotenv'
 config({ path: '.env.local' })
 
-import { getEnv, serviceClient } from '@airtalk/db'
-import { ElevenLabsEngine } from '@airtalk/engine'
+import { getEnv, serviceClient } from '@voiceflow/db'
+import { ElevenLabsEngine } from '@voiceflow/engine'
 
 async function main() {
   const toE164 = process.argv[2]

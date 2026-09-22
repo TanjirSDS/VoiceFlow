@@ -1,4 +1,4 @@
-# Airtalk — AI Coding Prompts, Phase by Phase
+# VoiceFlow — AI Coding Prompts, Phase by Phase
 
 Copy-paste prompts for Claude Code / Cursor. Run them in order — each assumes the previous phase is merged and working. Prompt 0 goes in `CLAUDE.md` (or `.cursorrules`) once; every phase prompt then inherits it.
 
@@ -7,7 +7,7 @@ Copy-paste prompts for Claude Code / Cursor. Run them in order — each assumes 
 ## Prompt 0 — Project context (put in CLAUDE.md, not pasted per task)
 
 ```
-You are building Airtalk, a multi-tenant SaaS where small businesses create AI voice
+You are building VoiceFlow, a multi-tenant SaaS where small businesses create AI voice
 agents that answer/place phone calls. We are a THIN CONTROL PLANE over ElevenLabs
 Agents (which runs the actual STT/LLM/TTS conversation and telephony via its native
 Twilio integration). Our code NEVER touches audio.
@@ -53,7 +53,7 @@ this, never leak past it:
 ## Prompt 1 — Voice loop (single tenant, no UI, no auth)
 
 ```
-Phase 1 of Airtalk. Goal: prove the full voice loop with zero UI.
+Phase 1 of VoiceFlow. Goal: prove the full voice loop with zero UI.
 
 Build:
 1. Monorepo per CLAUDE.md. apps/web deployable to Vercel with a /api/health route.

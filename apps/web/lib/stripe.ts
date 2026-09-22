@@ -1,5 +1,5 @@
 import Stripe from 'stripe'
-import { getEnv } from '@airtalk/db'
+import { getEnv } from '@voiceflow/db'
 
 let cached: Stripe | undefined
 

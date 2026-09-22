@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
-import type { SupabaseClient } from '@airtalk/db'
+import type { SupabaseClient } from '@voiceflow/db'
 import {
   AnalyticsCharts,
   type BreakdownBar,

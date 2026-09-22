@@ -5,8 +5,8 @@
 // (updateAgentAction → one updateAgent + one version row, rule 4). No per-section
 // saves. Sections render in the documented handoff order; Functions + Knowledge
 // Base live in the server-rendered rail ABOVE this (they use their own actions).
-import type { DataCollectionField, SuccessCriterion } from '@airtalk/engine'
-import { CALL_DEFAULTS, SPEECH_DEFAULTS } from '@airtalk/engine/templates'
+import type { DataCollectionField, SuccessCriterion } from '@voiceflow/engine'
+import { CALL_DEFAULTS, SPEECH_DEFAULTS } from '@voiceflow/engine/templates'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { useEffect, useState, type KeyboardEvent } from 'react'

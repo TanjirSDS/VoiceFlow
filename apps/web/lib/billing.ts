@@ -1,6 +1,6 @@
 import type Stripe from 'stripe'
-import type { SupabaseClient } from '@airtalk/db'
-import type { VoiceEngine } from '@airtalk/engine'
+import type { SupabaseClient } from '@voiceflow/db'
+import type { VoiceEngine } from '@voiceflow/engine'
 import { DUNNING_GRACE_DAYS, overageDelta, OVERAGE_METER_EVENT, planChange } from './billing-math'
 import { pauseOrgAgents } from './usage'
 

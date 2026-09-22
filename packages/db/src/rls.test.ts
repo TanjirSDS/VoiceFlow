@@ -23,7 +23,7 @@ describe.skipIf(!live)('RLS org isolation (live)', () => {
   let clientB: SupabaseClient
 
   async function makeUserAndOrg(tag: 'a' | 'b') {
-    const email = `${stamp}-${tag}@airtalk.test`
+    const email = `${stamp}-${tag}@voiceflow.test`
     const password = `pw-${stamp}`
     const { data: u, error: uErr } = await admin.auth.admin.createUser({
       email,

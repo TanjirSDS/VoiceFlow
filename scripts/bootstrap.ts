@@ -4,8 +4,8 @@
 import { config } from 'dotenv'
 config({ path: '.env.local' })
 
-import { getEnv, serviceClient } from '@airtalk/db'
-import { ElevenLabsEngine, type AgentConfig } from '@airtalk/engine'
+import { getEnv, serviceClient } from '@voiceflow/db'
+import { ElevenLabsEngine, type AgentConfig } from '@voiceflow/engine'
 
 const AGENT: AgentConfig = {
   name: "Joe's Plumbing receptionist",

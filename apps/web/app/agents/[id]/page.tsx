@@ -1,4 +1,4 @@
-import { normalizeStoredConfigSafe, type WorkflowKb } from '@airtalk/engine/templates'
+import { normalizeStoredConfigSafe, type WorkflowKb } from '@voiceflow/engine/templates'
 import { notFound } from 'next/navigation'
 import { AgentBuilder, type BuilderConfig } from '../../../components/agent-builder'
 import { CalcomConnectForm } from '../../../components/calcom-connect-form'

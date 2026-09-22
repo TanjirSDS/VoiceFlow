@@ -4,7 +4,7 @@
 /* Tailwind v4 dark variant: class strategy, toggled by next-themes on <html>. */
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* ── Airtalk "Signal" design system ───────────────────────────────────────
+/* ── VoiceFlow "Signal" design system ───────────────────────────────────────
    A voice/telephony control plane. Committed light theme, cool-tinted
    neutrals, one electric-iris brand, and an emerald reserved strictly for
    live/on-air/active meaning. Fonts arrive as CSS vars from next/font. */

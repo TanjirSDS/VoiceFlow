@@ -1,6 +1,6 @@
 'use server'
 
-import type { SupabaseClient } from '@airtalk/db'
+import type { SupabaseClient } from '@voiceflow/db'
 import { revalidatePath } from 'next/cache'
 import type { AlertMetric, AlertOperator } from '../../lib/alerts-eval'
 import { activeOrg, type ActiveOrg } from '../../lib/org'

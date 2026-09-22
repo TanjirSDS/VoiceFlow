@@ -1,6 +1,6 @@
 import { createHmac } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
-import { ElevenLabsEngine } from '@airtalk/engine'
+import { ElevenLabsEngine } from '@voiceflow/engine'
 import fixture from '../../../packages/engine/fixtures/post-call-transcription.json'
 import { handleElevenLabsWebhook } from './elevenlabs-webhook'
 

@@ -1,6 +1,6 @@
-# Airtalk
+# VoiceFlow
 
-Thin control plane over ElevenLabs Agents for small-business AI voice agents. See `CLAUDE.md` for architecture rules and `airtalk-build-plan.md` for the roadmap.
+Thin control plane over ElevenLabs Agents for small-business AI voice agents. See `CLAUDE.md` for architecture rules and `voiceflow-build-plan.md` for the roadmap.
 
 ## Layout
 

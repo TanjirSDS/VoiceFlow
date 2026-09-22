@@ -1,5 +1,5 @@
-import type { SupabaseClient } from '@airtalk/db'
-import type { CallEvent, VoiceEngine } from '@airtalk/engine'
+import type { SupabaseClient } from '@voiceflow/db'
+import type { CallEvent, VoiceEngine } from '@voiceflow/engine'
 import { upsertContact } from './contacts'
 import { externalNumber, recordOptOut } from './opt-out'
 import { deriveOutcome, type CallOutcome } from './outcome'

@@ -232,7 +232,7 @@ export function AppShell({
               <PanelToggleIcon />
             </button>
             <div className="flex items-center gap-2 text-sm">
-              <span className="text-muted-foreground">Airtalk</span>
+              <span className="text-muted-foreground">VoiceFlow</span>
               {current && (
                 <>
                   <span className="text-muted-foreground/40">/</span>

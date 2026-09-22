@@ -3,8 +3,8 @@
 // pattern as outcome.ts: no key or any failure → no suggestions, never throws
 // past extractSuggestions' caller.
 
-import type { BusinessProfile, SuggestionPayload, SuggestionType } from '@airtalk/engine/templates'
-import { SUGGESTION_TYPES } from '@airtalk/engine/templates'
+import type { BusinessProfile, SuggestionPayload, SuggestionType } from '@voiceflow/engine/templates'
+import { SUGGESTION_TYPES } from '@voiceflow/engine/templates'
 
 export const LEARNING_MODEL = 'gpt-4o-mini'
 // gpt-4o-mini list price, cents per 1M tokens — for the per-run cost log only.

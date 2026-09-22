@@ -5,7 +5,7 @@
 import { config } from 'dotenv'
 config({ path: '.env.local' })
 
-import { serviceClient } from '@airtalk/db'
+import { serviceClient } from '@voiceflow/db'
 
 // outcome, summary, transcript seed per call — mix chosen so "did this week book anything?"
 // has a real answer (booked calls land in the most recent days).

@@ -1,4 +1,4 @@
-# Airtalk — Phase-by-Phase Build Plan
+# VoiceFlow — Phase-by-Phase Build Plan
 
 _Solo build. Order of principle: **prove the voice loop first, add product around it, bolt on signup last.** Auth/billing are commodity; the ElevenLabs↔Twilio integration is the risk — so it goes first._
 
@@ -74,7 +74,7 @@ Build: Stripe Products for Starter $499/750 · Growth $999/1500 · Pro $1499/250
 
 Now the front door — last, because everything behind it already works.
 
-Build: signup → org creation → checkout → wizard → live number, as one flow · transactional email (Resend): welcome, cap warnings, weekly summary · onboarding emails/checklist · Sentry alerts + uptime monitor + provider status webhooks → dashboard banner · move async work (reconciliation, emails) onto Inngest · migrate 2–3 done-for-you Retell clients as design partners · website: real claims, new pricing, app.airtalk.io links.
+Build: signup → org creation → checkout → wizard → live number, as one flow · transactional email (Resend): welcome, cap warnings, weekly summary · onboarding emails/checklist · Sentry alerts + uptime monitor + provider status webhooks → dashboard banner · move async work (reconciliation, emails) onto Inngest · migrate 2–3 done-for-you Retell clients as design partners · website: real claims, new pricing, app.voiceflow.io links.
 
 **Exit test:** a stranger goes from landing page to talking with their own agent, unassisted, in under 15 minutes.
 

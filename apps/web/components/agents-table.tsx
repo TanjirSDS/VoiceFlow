@@ -1,6 +1,6 @@
 'use client'
 
-import type { AgentType } from '@airtalk/engine/templates'
+import type { AgentType } from '@voiceflow/engine/templates'
 import Link from 'next/link'
 import { useRef, useState, useTransition } from 'react'
 import { toast } from 'sonner'
@@ -258,7 +258,7 @@ export function AgentsTable({
           <DialogHeader>
             <DialogTitle>Delete agent</DialogTitle>
             <DialogDescription>
-              This deletes “{deleteTarget?.name}” from Airtalk and removes it at the provider. This
+              This deletes “{deleteTarget?.name}” from VoiceFlow and removes it at the provider. This
               can&apos;t be undone.
             </DialogDescription>
           </DialogHeader>

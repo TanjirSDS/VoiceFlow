@@ -1,4 +1,4 @@
-# Airtalk.io — SaaS Platform Architecture (RFC)
+# VoiceFlow.io — SaaS Platform Architecture (RFC)
 
 _Status: Draft · Author: Tanjir · Date: 2026-07-12_
 _From "done-for-you agents on Retell" to a self-serve voice-agent SaaS, built solo._
@@ -7,7 +7,7 @@ _From "done-for-you agents on Retell" to a self-serve voice-agent SaaS, built so
 
 You don't need to build a voice platform. You need to build a **control plane** on top of one.
 
-A voice-agent provider (ElevenLabs Agents, Retell, Vapi) already runs the hard part — the real-time pipeline of speech-to-text → LLM → text-to-speech, with sub-second latency, interruption handling, and native Twilio telephony. Airtalk's product is everything around it:
+A voice-agent provider (ElevenLabs Agents, Retell, Vapi) already runs the hard part — the real-time pipeline of speech-to-text → LLM → text-to-speech, with sub-second latency, interruption handling, and native Twilio telephony. VoiceFlow's product is everything around it:
 
 - **Multi-tenancy** — customers, workspaces, isolation
 - **Self-serve agent builder** — templates + wizard instead of raw provider config
@@ -15,7 +15,7 @@ A voice-agent provider (ElevenLabs Agents, Retell, Vapi) already runs the hard p
 - **Call logs, transcripts, analytics** — the dashboard customers actually look at
 - **Billing & metering** — plans, minute caps, overages (this is where margin lives)
 
-The customer never sees ElevenLabs or Twilio. They see Airtalk.
+The customer never sees ElevenLabs or Twilio. They see VoiceFlow.
 
 **Important simplification:** you do NOT wire ElevenLabs + Twilio together yourself. ElevenLabs Agents has a *native Twilio integration* — you register a Twilio number with ElevenLabs via API and their platform answers/places the calls. Your backend never touches audio. Same for Retell.
 
@@ -66,8 +66,8 @@ All caps are hard — no "unlimited" anywhere. Sell overage at **$0.30–0.40/mi
 
 ```mermaid
 flowchart LR
-  subgraph Airtalk["Airtalk (your code)"]
-    FE["Next.js dashboard\napp.airtalk.io"]
+  subgraph VoiceFlow["VoiceFlow (your code)"]
+    FE["Next.js dashboard\napp.voiceflow.io"]
     API["API routes / server actions"]
     DB[("Supabase Postgres\n+ Auth + RLS")]
     WH["Webhook handlers"]
@@ -87,7 +87,7 @@ flowchart LR
   Stripe -- webhooks --> WH
 ```
 
-**Solo-dev stack:** Next.js (App Router) on Vercel · Supabase (Postgres, Auth, RLS, Storage) · Stripe Billing · ElevenLabs + Twilio SDKs · Sentry. One repo, no microservices, no queue until outbound campaigns need one (then Inngest/QStash). Keep the WordPress site as marketing at `airtalk.io`; app lives at `app.airtalk.io`.
+**Solo-dev stack:** Next.js (App Router) on Vercel · Supabase (Postgres, Auth, RLS, Storage) · Stripe Billing · ElevenLabs + Twilio SDKs · Sentry. One repo, no microservices, no queue until outbound campaigns need one (then Inngest/QStash). Keep the WordPress site as marketing at `voiceflow.io`; app lives at `app.voiceflow.io`.
 
 **The adapter is your insurance.** Define your own interface — `createAgent()`, `updateAgent()`, `attachNumber()`, `startBatchCall()`, `normalizeCallEvent()` — and put all ElevenLabs calls behind it. Your DB stores `provider` + `provider_agent_id`, never provider-specific shapes in core tables. Swapping to Retell, or to your own Pipecat pipeline at scale, becomes a new adapter, not a rewrite.
 

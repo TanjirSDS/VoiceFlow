@@ -1,5 +1,5 @@
 // Template registry. Browser-safe (see shared.ts) — the web app's create surface
-// imports this via '@airtalk/engine/templates' without pulling in the provider adapter.
+// imports this via '@voiceflow/engine/templates' without pulling in the provider adapter.
 
 import type { AgentConfig } from '../types'
 import { booking } from './booking'

@@ -2,7 +2,7 @@ import {
   suggestionTitle,
   type SuggestionPayload,
   type SuggestionType,
-} from '@airtalk/engine/templates'
+} from '@voiceflow/engine/templates'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { SparkleIcon } from '../../../../components/icons'

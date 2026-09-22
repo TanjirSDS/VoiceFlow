@@ -1,6 +1,6 @@
 'use client'
 
-import type { Voice } from '@airtalk/engine'
+import type { Voice } from '@voiceflow/engine'
 import { Badge } from './ui/badge'
 import { cn } from '../lib/utils'
 

@@ -13,7 +13,7 @@ import { PlusIcon, TrashIcon } from './icons'
 type Row = { name: string; value: string }
 
 export function TestPanel({ embed, agentId }: { embed: WidgetEmbed; agentId: string }) {
-  const storageKey = `airtalk:test-inputs:${agentId}`
+  const storageKey = `voiceflow:test-inputs:${agentId}`
   const [rows, setRows] = useState<Row[]>([])
   const [draft, setDraft] = useState<Row[]>([])
   const [open, setOpen] = useState(false)

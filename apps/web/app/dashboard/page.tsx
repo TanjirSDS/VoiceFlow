@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import type { SupabaseClient } from '@airtalk/db'
+import type { SupabaseClient } from '@voiceflow/db'
 import { DashboardCharts, type DayPoint, type WeekPoint } from '../../components/dashboard-charts'
 import { ClockIcon, GaugeIcon, PhoneIcon, TimerIcon } from '../../components/icons'
 import { userClient } from '../../lib/supabase-server'

@@ -18,7 +18,7 @@ config({ path: '.env.local' })
 
 import assert from 'node:assert/strict'
 import Stripe from 'stripe'
-import { getEnv } from '@airtalk/db'
+import { getEnv } from '@voiceflow/db'
 import { OVERAGE_METER_EVENT } from '../apps/web/lib/billing-math'
 
 const key = getEnv().STRIPE_SECRET_KEY

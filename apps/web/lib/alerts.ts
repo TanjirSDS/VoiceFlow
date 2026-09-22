@@ -4,7 +4,7 @@
 // fire insert an alert_events row + notify the chosen channels. Driven by the
 // alert-evaluate Inngest cron (lib/jobs.ts) every 15 minutes.
 
-import type { SupabaseClient } from '@airtalk/db'
+import type { SupabaseClient } from '@voiceflow/db'
 import {
   ALERT_METRIC_LABELS,
   ALERT_OPERATOR_LABELS,
@@ -114,7 +114,7 @@ export async function evaluateAlert(db: SupabaseClient, alert: AlertRow, nowMs: 
     const { data: org } = await db.from('orgs').select('name').eq('id', alert.org_id).maybeSingle()
     await sendEmail(
       emails,
-      `Airtalk alert: ${alert.name}`,
+      `VoiceFlow alert: ${alert.name}`,
       AlertEmail({
         orgName: org?.name ?? 'your workspace',
         alertName: alert.name,

@@ -1,5 +1,5 @@
 {
-  "name": "airtalk",
+  "name": "voiceflow",
   "private": true,
   "workspaces": [
     "apps/*",
@@ -14,6 +14,7 @@
     "bootstrap": "tsx scripts/bootstrap.ts",
     "outbound-test": "tsx scripts/outbound-test.ts",
     "seed-calls": "tsx scripts/seed-calls.ts",
+    "seed-demo": "tsx scripts/seed-demo.ts",
     "seed-orgs": "tsx scripts/seed-orgs.ts",
     "stripe-setup": "tsx scripts/stripe-setup.ts",
     "stripe-acceptance": "tsx scripts/stripe-acceptance.ts",
@@ -23,8 +24,8 @@
     "backfill-contacts": "tsx scripts/backfill-contacts.ts"
   },
   "dependencies": {
-    "@airtalk/db": "*",
-    "@airtalk/engine": "*"
+    "@voiceflow/db": "*",
+    "@voiceflow/engine": "*"
   },
   "devDependencies": {
     "@types/node": "^20",

@@ -1,5 +1,5 @@
 import { timingSafeEqual } from 'node:crypto'
-import { getEnv, serviceClient } from '@airtalk/db'
+import { getEnv, serviceClient } from '@voiceflow/db'
 import { NextResponse, type NextRequest } from 'next/server'
 import { CONSERVATIVE_ZONES, zonesFor } from '../../../../lib/areacode-tz'
 import { createBooking, listSlots, TOOLS_SECRET_HEADER } from '../../../../lib/calcom'

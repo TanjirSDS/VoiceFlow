@@ -1,4 +1,4 @@
-import type { BusinessProfile } from '@airtalk/engine/templates'
+import type { BusinessProfile } from '@voiceflow/engine/templates'
 import { describe, expect, it, vi } from 'vitest'
 import {
   batchCalls,

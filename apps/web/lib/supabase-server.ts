@@ -1,6 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
-import { serviceClient, type SupabaseClient } from '@airtalk/db'
+import { serviceClient, type SupabaseClient } from '@voiceflow/db'
 
 // RLS-scoped client bound to the signed-in user's cookies. All user-facing
 // reads/writes go through this so Postgres enforces org isolation; only

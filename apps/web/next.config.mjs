@@ -22,7 +22,7 @@ const csp = [
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // Workspace packages ship raw TS; Next transpiles them.
-  transpilePackages: ['@airtalk/db', '@airtalk/engine'],
+  transpilePackages: ['@voiceflow/db', '@voiceflow/engine'],
   async headers() {
     return [
       {

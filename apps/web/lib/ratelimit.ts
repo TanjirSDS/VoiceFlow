@@ -1,4 +1,4 @@
-import { getEnv } from '@airtalk/db'
+import { getEnv } from '@voiceflow/db'
 
 // Upstash sliding-window limits. Without UPSTASH_* env vars every check
 // passes — rate limiting is a production knob, not a dev requirement.

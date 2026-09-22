@@ -3,7 +3,7 @@
 import { config } from 'dotenv'
 config({ path: '.env.local' })
 
-import { serviceClient } from '@airtalk/db'
+import { serviceClient } from '@voiceflow/db'
 
 async function findUserByEmail(db: ReturnType<typeof serviceClient>, email: string) {
   for (let page = 1; page <= 20; page++) {

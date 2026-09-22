@@ -1,5 +1,5 @@
 // Shared building blocks for agent templates. PURE code only — this directory is
-// exposed to the browser via the '@airtalk/engine/templates' subpath, so nothing
+// exposed to the browser via the '@voiceflow/engine/templates' subpath, so nothing
 // here (or in the template files) may import node APIs or the provider adapter.
 
 export interface BusinessProfile {

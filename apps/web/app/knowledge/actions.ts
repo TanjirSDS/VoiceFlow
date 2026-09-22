@@ -1,7 +1,7 @@
 'use server'
 
-import type { SupabaseClient } from '@airtalk/db'
-import type { KnowledgeSource } from '@airtalk/engine'
+import type { SupabaseClient } from '@voiceflow/db'
+import type { KnowledgeSource } from '@voiceflow/engine'
 import { revalidatePath } from 'next/cache'
 import { makeEngine } from '../../lib/engine'
 import { activeOrg, type ActiveOrg } from '../../lib/org'

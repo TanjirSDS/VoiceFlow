@@ -1,13 +1,13 @@
 // Phase 17 outbound delivery — the producer side of rule 2. We sign exactly the
 // way packages/engine verifies inbound ElevenLabs webhooks:
-//   header `airtalk-signature: t=<unix>,v0=<hex hmac-sha256("<t>.<body>")>`.
+//   header `voiceflow-signature: t=<unix>,v0=<hex hmac-sha256("<t>.<body>")>`.
 // Retries/backoff + dead-lettering come from the webhook-deliver Inngest function
 // (lib/jobs.ts) — attemptDelivery throws to request a retry until MAX_ATTEMPTS.
 
 import { createHmac } from 'node:crypto'
-import type { SupabaseClient } from '@airtalk/db'
+import type { SupabaseClient } from '@voiceflow/db'
 
-export const OUTBOUND_SIG_HEADER = 'airtalk-signature'
+export const OUTBOUND_SIG_HEADER = 'voiceflow-signature'
 const MAX_ATTEMPTS = 5
 const TIMEOUT_MS = 10_000
 

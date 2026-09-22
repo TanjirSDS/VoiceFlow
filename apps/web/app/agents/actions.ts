@@ -1,8 +1,8 @@
 'use server'
 
 import { randomBytes } from 'node:crypto'
-import { getEnv, type SupabaseClient } from '@airtalk/db'
-import type { AgentConfig } from '@airtalk/engine'
+import { getEnv, type SupabaseClient } from '@voiceflow/db'
+import type { AgentConfig } from '@voiceflow/engine'
 import {
   applySuggestionToPrompt,
   buildAgentConfig,
@@ -17,7 +17,7 @@ import {
   type SuggestionPayload,
   type SuggestionType,
   type TemplateKey,
-} from '@airtalk/engine/templates'
+} from '@voiceflow/engine/templates'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { calcomBookingTool } from '../../lib/calcom'
