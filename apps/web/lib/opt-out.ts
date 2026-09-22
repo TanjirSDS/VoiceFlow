@@ -1,4 +1,4 @@
-import type { SupabaseClient } from '@airtalk/db'
+import type { SupabaseClient } from '@voiceflow/db'
 
 // Phase 7: honoring "remove me". The classifier labels the call opt_out; this
 // records the number on the org's permanent do-not-call list and pulls it out

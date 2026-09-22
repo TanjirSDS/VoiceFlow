@@ -1,6 +1,6 @@
 // StoredAgentConfig — what we persist in agents.config and every
 // agent_config_versions row. Browser-safe (pure, see shared.ts) so both the web
-// app and the migrate script import it via '@airtalk/engine/templates'.
+// app and the migrate script import it via '@voiceflow/engine/templates'.
 
 import type { AgentConfig } from '../types'
 import { businessFacts, conductRules, greeting, TONE, type BusinessProfile } from './shared'

@@ -1,4 +1,4 @@
-import { serviceClient } from '@airtalk/db'
+import { serviceClient } from '@voiceflow/db'
 
 // Create an org + owner membership for a user. Service-role writes: members
 // can't insert orgs or memberships under RLS (Phase 4 kept membership

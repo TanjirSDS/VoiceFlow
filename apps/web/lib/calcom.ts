@@ -3,7 +3,7 @@
 // Endpoints/headers verified against https://cal.com/docs/api-reference/v2 on
 // 2026-07-12: the cal-api-version header is versioned PER ENDPOINT.
 
-import type { AgentTool } from '@airtalk/engine'
+import type { AgentTool } from '@voiceflow/engine'
 
 const BASE = 'https://api.cal.com/v2'
 
@@ -69,7 +69,7 @@ export async function listEventTypes(
   return calReq(apiKey, '2024-06-14', `/event-types?username=${encodeURIComponent(me.username)}`)
 }
 
-export const TOOLS_SECRET_HEADER = 'x-airtalk-tools-secret'
+export const TOOLS_SECRET_HEADER = 'x-voiceflow-tools-secret'
 
 /** The check_availability_and_book tool attached to booking-template agents. */
 export function calcomBookingTool(agentId: string, appUrl: string, secret: string): AgentTool {

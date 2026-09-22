@@ -1,8 +1,8 @@
 import type { ReactElement } from 'react'
-import { getEnv, type SupabaseClient } from '@airtalk/db'
+import { getEnv, type SupabaseClient } from '@voiceflow/db'
 
 // Resend's sandbox sender — works without domain verification, dev only.
-const FROM_FALLBACK = 'Airtalk <onboarding@resend.dev>'
+const FROM_FALLBACK = 'VoiceFlow <onboarding@resend.dev>'
 
 /** Origin for links inside emails. */
 export function appUrl(): string {

@@ -1,5 +1,5 @@
-import { getEnv } from '@airtalk/db'
-import { ElevenLabsEngine, type VoiceEngine } from '@airtalk/engine'
+import { getEnv } from '@voiceflow/db'
+import { ElevenLabsEngine, type VoiceEngine } from '@voiceflow/engine'
 
 // The one place apps/web picks a provider. Everything else sees VoiceEngine.
 export function makeEngine(): VoiceEngine {

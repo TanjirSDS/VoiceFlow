@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { serviceClient } from '@airtalk/db'
+import { serviceClient } from '@voiceflow/db'
 import { BillingInvoices } from '../../components/billing-invoices'
 import { BillingUsageChart } from '../../components/billing-usage-chart'
 import { Button } from '../../components/ui/button'

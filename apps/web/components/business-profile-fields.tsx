@@ -1,7 +1,7 @@
 'use client'
 
 // The business form, shared by the new-agent wizard and the edit page.
-import type { BusinessProfile } from '@airtalk/engine/templates'
+import type { BusinessProfile } from '@voiceflow/engine/templates'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Label } from './ui/label'

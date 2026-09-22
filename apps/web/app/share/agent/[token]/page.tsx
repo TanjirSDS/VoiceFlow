@@ -1,4 +1,4 @@
-import { serviceClient } from '@airtalk/db'
+import { serviceClient } from '@voiceflow/db'
 import { notFound } from 'next/navigation'
 import { ShareWidget } from '../../../../components/share-widget'
 import { makeEngine } from '../../../../lib/engine'

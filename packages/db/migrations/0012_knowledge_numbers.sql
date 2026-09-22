@@ -1,7 +1,7 @@
 -- Phase 13: per-org knowledge-base doc registry + per-plan phone-number limits.
 --
 -- ElevenLabs' knowledge base is WORKSPACE-level (one pool shared across every
--- Airtalk org), so we NEVER list provider-side docs to a user. kb_documents is
+-- VoiceFlow org), so we NEVER list provider-side docs to a user. kb_documents is
 -- our own RLS-scoped registry: which EL doc belongs to which org, what it's
 -- called, where it came from. Attachment to agents lives in the agent config
 -- (conversation_config...prompt.knowledge_base) at the provider, so there's no

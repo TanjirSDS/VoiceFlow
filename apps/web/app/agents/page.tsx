@@ -1,5 +1,5 @@
-import { getEnv } from '@airtalk/db'
-import { normalizeStoredConfigSafe } from '@airtalk/engine/templates'
+import { getEnv } from '@voiceflow/db'
+import { normalizeStoredConfigSafe } from '@voiceflow/engine/templates'
 import { AgentsTable, type AgentRow } from '../../components/agents-table'
 import { makeEngine } from '../../lib/engine'
 import { activeOrg } from '../../lib/org'

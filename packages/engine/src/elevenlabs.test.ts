@@ -89,7 +89,7 @@ describe('agent config mapping (Phase 12)', () => {
       await engine.updateAgent('agent_1', {
         voiceId: 'v1',
         speech: { stability: 0.3, similarityBoost: 0.9, speed: 1.1 },
-        transcription: { keywords: ['Airtalk', 'Cal.com'] },
+        transcription: { keywords: ['VoiceFlow', 'Cal.com'] },
         call: { maxDurationSecs: 300, endOnSilenceSecs: 20 },
         analysis: {
           dataCollection: [{ name: 'Call Summary', type: 'string', description: 'A concise summary.' }],
@@ -106,7 +106,7 @@ describe('agent config mapping (Phase 12)', () => {
       similarity_boost: 0.9,
       speed: 1.1,
     })
-    expect(captured.conversation_config.asr).toEqual({ keywords: ['Airtalk', 'Cal.com'] })
+    expect(captured.conversation_config.asr).toEqual({ keywords: ['VoiceFlow', 'Cal.com'] })
     expect(captured.conversation_config.conversation).toEqual({ max_duration_seconds: 300 })
     expect(captured.conversation_config.turn).toEqual({ silence_end_call_timeout: 20 })
     expect(captured.platform_settings.data_collection).toEqual({

@@ -5,7 +5,7 @@
 import { config } from 'dotenv'
 config({ path: '.env.local' })
 
-import { serviceClient } from '@airtalk/db'
+import { serviceClient } from '@voiceflow/db'
 import { backfillOrgContacts } from '../apps/web/lib/contacts'
 
 async function main() {

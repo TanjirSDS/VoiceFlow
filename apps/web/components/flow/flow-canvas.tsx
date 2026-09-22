@@ -25,7 +25,7 @@ import type {
   WorkflowKb,
   WorkflowNode,
   WorkflowNodeType,
-} from '@airtalk/engine/templates'
+} from '@voiceflow/engine/templates'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { SettingsRail, type AgentSettings } from '../settings-rail'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../ui/accordion'
@@ -112,7 +112,7 @@ const glyph = (d: string) => (
 const txt = (s: string) => <span className="text-[10px] font-bold leading-none">{s}</span>
 
 // The full node vocabulary (matches the reference tool). Only the three with a `type`
-// are wired into Airtalk's engine today; the rest are shown but marked "Soon" — no fake
+// are wired into VoiceFlow's engine today; the rest are shown but marked "Soon" — no fake
 // buttons that would produce an unmappable node.
 const NODE_ITEMS: { label: string; type?: WorkflowNodeType; icon: ReactNode }[] = [
   { label: 'Conversation', type: 'conversation', icon: glyph('M3 4.8A1.8 1.8 0 014.8 3h6.4A1.8 1.8 0 0113 4.8V8a1.8 1.8 0 01-1.8 1.8H6L3 12z') },

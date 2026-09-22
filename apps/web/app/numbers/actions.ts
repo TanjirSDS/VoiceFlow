@@ -1,7 +1,7 @@
 'use server'
 
-import { getEnv, serviceClient } from '@airtalk/db'
-import type { SipNumberConfig } from '@airtalk/engine'
+import { getEnv, serviceClient } from '@voiceflow/db'
+import type { SipNumberConfig } from '@voiceflow/engine'
 import { revalidatePath } from 'next/cache'
 import { makeEngine } from '../../lib/engine'
 import { numberPurchaseBlocked, purchaseNumber, releaseNumber } from '../../lib/numbers'

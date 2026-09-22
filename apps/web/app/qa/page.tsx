@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
-import type { SupabaseClient } from '@airtalk/db'
+import type { SupabaseClient } from '@voiceflow/db'
 import { QaSuccessTrend } from '../../components/qa-charts'
 import { QaDetailedCalls, type QaDetailedRow } from '../../components/qa-detailed-calls'
 import { GaugeIcon, PhoneIcon, QaIcon, SparkleIcon } from '../../components/icons'

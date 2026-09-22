@@ -7,8 +7,8 @@
 import { config } from 'dotenv'
 config({ path: '.env.local' })
 
-import { serviceClient } from '@airtalk/db'
-import { normalizeStoredConfig } from '@airtalk/engine/templates'
+import { serviceClient } from '@voiceflow/db'
+import { normalizeStoredConfig } from '@voiceflow/engine/templates'
 
 // Postgres jsonb canonicalizes key order on storage, so a plain JSON.stringify
 // compare would flag every already-v2 row as changed and rewrite it each run.

@@ -5,7 +5,7 @@
 import { config } from 'dotenv'
 config({ path: '.env.local' })
 
-import { serviceClient } from '@airtalk/db'
+import { serviceClient } from '@voiceflow/db'
 
 type Turn = { role: 'agent' | 'user'; message: string; time_in_call_secs: number }
 

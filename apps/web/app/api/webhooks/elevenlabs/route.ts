@@ -1,5 +1,5 @@
 import type { NextRequest } from 'next/server'
-import { getEnv, serviceClient } from '@airtalk/db'
+import { getEnv, serviceClient } from '@voiceflow/db'
 import { makeEngine } from '../../../../lib/engine'
 import { handleElevenLabsWebhook } from '../../../../lib/elevenlabs-webhook'
 import { emit } from '../../../../lib/events'

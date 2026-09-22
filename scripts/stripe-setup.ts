@@ -14,7 +14,7 @@ import { config } from 'dotenv'
 config({ path: '.env.local' })
 
 import Stripe from 'stripe'
-import { getEnv, serviceClient } from '@airtalk/db'
+import { getEnv, serviceClient } from '@voiceflow/db'
 import { annualPriceCents, OVERAGE_CENTS_PER_MIN, OVERAGE_METER_EVENT } from '../apps/web/lib/billing-math'
 
 async function ensureProduct(stripe: Stripe, existing: Stripe.Product[], key: string, name: string) {
@@ -72,7 +72,7 @@ async function main() {
       value_settings: { event_payload_key: 'value' },
     }))
 
-  const overageProduct = await ensureProduct(stripe, products, 'overage', 'Airtalk Overage minutes')
+  const overageProduct = await ensureProduct(stripe, products, 'overage', 'VoiceFlow Overage minutes')
   const overagePrice = await ensurePrice(stripe, {
     lookupKey: OVERAGE_METER_EVENT,
     product: overageProduct.id,
@@ -81,7 +81,7 @@ async function main() {
   })
 
   for (const plan of plans) {
-    const product = await ensureProduct(stripe, products, plan.id, `Airtalk ${plan.name}`)
+    const product = await ensureProduct(stripe, products, plan.id, `VoiceFlow ${plan.name}`)
     const monthly = await ensurePrice(stripe, {
       lookupKey: `${plan.id}_monthly`,
       product: product.id,

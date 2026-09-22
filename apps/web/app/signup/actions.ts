@@ -2,7 +2,7 @@
 
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
-import { getEnv, serviceClient } from '@airtalk/db'
+import { getEnv, serviceClient } from '@voiceflow/db'
 import { startCheckout } from '../../lib/billing'
 import { makeEngine } from '../../lib/engine'
 import { emit } from '../../lib/events'

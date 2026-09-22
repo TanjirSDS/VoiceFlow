@@ -1,6 +1,6 @@
-# Airtalk — Project Context
+# VoiceFlow — Project Context
 
-You are building Airtalk, a multi-tenant SaaS where small businesses create AI voice
+You are building VoiceFlow, a multi-tenant SaaS where small businesses create AI voice
 agents that answer/place phone calls. We are a THIN CONTROL PLANE over ElevenLabs
 Agents (which runs the actual STT/LLM/TTS conversation and telephony via its native
 Twilio integration). Our code NEVER touches audio.
@@ -83,7 +83,7 @@ normalizeCallEvent(payload) → CallEvent { providerCallId, direction, fromE164,
   edit page re-run the template and rollback restore the form. Rollback re-applies
   via adapter and APPENDS a new version row (history is append-only, rule 4).
   Bootstrap-era agents (plain AgentConfig in config) render read-only in the UI.
-- Templates are browser-safe via the '@airtalk/engine/templates' subpath export
+- Templates are browser-safe via the '@voiceflow/engine/templates' subpath export
   (pure TS, no node/provider imports) so client components can use TEMPLATE_INFO.
 - Rule 1 is now machine-enforced: root eslint.config.mjs no-restricted-imports
   blocks elevenlabs imports outside packages/engine (`npm run lint`).
@@ -110,7 +110,7 @@ normalizeCallEvent(payload) → CallEvent { providerCallId, direction, fromE164,
   outcome.ts validated with the dataviz palette checker (CVD ΔE 16.2).
 - npm run seed-calls: 20 deterministic synthetic calls (upsert on
   provider_call_id seed-conv-NN, idempotent).
-- Migration 0003 NOT applied anywhere yet: no Airtalk Supabase project or
+- Migration 0003 NOT applied anywhere yet: no VoiceFlow Supabase project or
   .env.local exists as of Phase 3 — apply 0001–0003 when the stack is stood up.
 
 ### Phase 4 tenants + usage (2026-07-12)
@@ -470,7 +470,7 @@ normalizeCallEvent(payload) → CallEvent { providerCallId, direction, fromE164,
 - StoredAgentConfig v2 = { agentType, template: TemplateKey|null, seed?:
   BusinessProfile, agentConfig }. agentConfig.systemPrompt is AUTHORITATIVE —
   templates only SEED it once; the prompt text is thereafter the source of truth.
-  Moved to '@airtalk/engine/templates' (stored.ts, browser-safe) so the migrate
+  Moved to '@voiceflow/engine/templates' (stored.ts, browser-safe) so the migrate
   script + web share it; apps/web/lib/types.ts re-exports. normalizeStoredConfig
   (throws) + normalizeStoredConfigSafe (null) reshape v1 {template,profile,
   agentConfig}→profile becomes seed, and bootstrap-era plain AgentConfig→wrapped,
@@ -557,7 +557,7 @@ normalizeCallEvent(payload) → CallEvent { providerCallId, direction, fromE164,
   - Widget dynamic vars: attribute `dynamic-variables` = a JSON-object string.
     testWidgetEmbed() now returns dynamicVariablesAttr; TestWidget stays
     provider-blind (only knows "there's an attr for vars"). Test inputs persist
-    per-agent in localStorage (airtalk:test-inputs:{id}) and remount the widget
+    per-agent in localStorage (voiceflow:test-inputs:{id}) and remount the widget
     (React key on the vars) so a live call echoes them back.
   - Public toggle: platform_settings.auth.enable_auth (false = public). New
     engine.setAgentPublic(id, isPublic). Sits behind a $ref in the create schema
@@ -577,7 +577,7 @@ normalizeCallEvent(payload) → CallEvent { providerCallId, direction, fromE164,
   keyed by current version so Save/rollback remount with fresh data). Header =
   back, inline name, "Unsaved changes", Versions (Sheet), Share, primary Save.
   Save = updateAgentAction (now also takes llm/language) = ONE updateAgent + ONE
-  version row (rule 4). Metadata strip: copyable Airtalk + provider ids,
+  version row (rule 4). Metadata strip: copyable VoiceFlow + provider ids,
   effective $/min (includedRateCentsPerMin in billing-math, "included" vs 35¢
   overage), LLM + language chips. Right column = accordion rail; Cal.com moved
   into a "Functions" section and KB into "Knowledge Base" (same gates — nothing
@@ -641,7 +641,7 @@ normalizeCallEvent(payload) → CallEvent { providerCallId, direction, fromE164,
   rationale}], data?, sentiment?}. Sentiment is NOT native to EL — normalizeAnalysis
   surfaces a seeded "user_sentiment" data field into the neutral sentiment slot;
   otherwise it stays undefined. calls.analysis jsonb added in 0011 (nullable; no
-  db type file — @airtalk/db is untyped SupabaseClient, so no type regen needed).
+  db type file — @voiceflow/db is untyped SupabaseClient, so no type regen needed).
 - ANALYSIS PAYLOAD (verified via Get-Conversation OpenAPI = same model as the
   post_call_transcription webhook): data.analysis.{call_successful:'success'|
   'failure'|'unknown', transcript_summary, evaluation_criteria_results (map<id,
@@ -1066,7 +1066,7 @@ normalizeCallEvent(payload) → CallEvent { providerCallId, direction, fromE164,
   = enqueueWebhookEvent(eventType 'alert.fired', eventKey=alert_event.id, the chosen
   endpointIds). onFailure → deadLetter (Sentry), the established pattern.
 - OUTBOUND DELIVERY (lib/webhooks-out.ts — producer side of rule 2). signBody =
-  the SAME format engine.verifyWebhook parses: header `airtalk-signature:
+  the SAME format engine.verifyWebhook parses: header `voiceflow-signature:
   t=<unix>,v0=<hex hmac-sha256("<t>.<body>")>` (own header name, EL's algorithm) —
   webhooks-out.test asserts engine.verifyWebhook accepts our signature (offline
   producer/consumer symmetry). enqueueWebhookEvent: one pending webhook_deliveries
@@ -1136,7 +1136,7 @@ normalizeCallEvent(payload) → CallEvent { providerCallId, direction, fromE164,
   → fires exactly once per crossing, history shows it, email arrives (Resend test key),
   a webhook endpoint records attempts and honors the retry→dead path; disabling an
   endpoint stops deliveries mid-flight; org B can't read org A's alerts/endpoints/
-  deliveries (RLS); confirm a real consumer verifies our airtalk-signature.
+  deliveries (RLS); confirm a real consumer verifies our voiceflow-signature.
 
 ### Phase 18 conversational flow / agent workflows (2026-07-13)
 - VERIFIED EL WORKFLOW SCHEMA (rule 6 pass, 2026-07-13; primary source = the Fern-

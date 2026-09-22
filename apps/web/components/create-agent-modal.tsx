@@ -10,7 +10,7 @@ import {
   type BusinessProfile,
   type TemplateCategory,
   type TemplateKey,
-} from '@airtalk/engine/templates'
+} from '@voiceflow/engine/templates'
 import { useState, useTransition } from 'react'
 import { createAgentAction, generateDraftAction } from '../app/agents/actions'
 import { PlusIcon, SparkleIcon } from './icons'

@@ -1,7 +1,7 @@
 'use server'
 
 import { randomBytes } from 'node:crypto'
-import { serviceClient, type SupabaseClient } from '@airtalk/db'
+import { serviceClient, type SupabaseClient } from '@voiceflow/db'
 import { revalidatePath } from 'next/cache'
 import { listEventTypes } from '../../lib/calcom'
 import { activeOrg, type ActiveOrg } from '../../lib/org'

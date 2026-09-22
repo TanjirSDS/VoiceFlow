@@ -1,4 +1,4 @@
-import { serviceClient } from '@airtalk/db'
+import { serviceClient } from '@voiceflow/db'
 import { AdjustmentForm } from './adjustment-form'
 import { viewAsAction } from './actions'
 import { requireAdmin } from '../../lib/admin'

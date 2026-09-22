@@ -2,7 +2,7 @@
 // One cheap LLM call per finished call, best-effort: any failure → null, the
 // call row just keeps outcome/summary null.
 
-import type { CallAnalysis } from '@airtalk/engine'
+import type { CallAnalysis } from '@voiceflow/engine'
 
 export const OUTCOMES = [
   'booked',

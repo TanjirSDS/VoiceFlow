@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
-import { serviceClient } from '@airtalk/db'
+import { serviceClient } from '@voiceflow/db'
 import { requireAdmin } from '../../lib/admin'
 import { parseAdjustment } from '../../lib/admin-adjustment'
 

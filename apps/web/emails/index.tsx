@@ -19,7 +19,7 @@ function Shell({ preview, children }: { preview: string; children: ReactNode }) 
         <Container style={card}>
           {children}
           <Hr />
-          <Text style={muted}>Airtalk — AI voice agents for small business.</Text>
+          <Text style={muted}>VoiceFlow — AI voice agents for small business.</Text>
         </Container>
       </Body>
     </Html>
@@ -28,8 +28,8 @@ function Shell({ preview, children }: { preview: string; children: ReactNode }) 
 
 export function WelcomeEmail({ orgName, appUrl }: { orgName: string; appUrl: string }): ReactElement {
   return (
-    <Shell preview="Your Airtalk workspace is ready">
-      <Heading as="h2">Welcome to Airtalk</Heading>
+    <Shell preview="Your VoiceFlow workspace is ready">
+      <Heading as="h2">Welcome to VoiceFlow</Heading>
       <Text>
         Your workspace <strong>{orgName}</strong> is ready. Finish setup — pick a plan, create your
         agent, and get a phone number — and your AI receptionist starts answering calls today.
@@ -51,7 +51,7 @@ export function AlertEmail(props: {
   appUrl: string
 }): ReactElement {
   return (
-    <Shell preview={`Airtalk alert: ${props.alertName}`}>
+    <Shell preview={`VoiceFlow alert: ${props.alertName}`}>
       <Heading as="h2">Alert: {props.alertName}</Heading>
       <Text>
         An alert on <strong>{props.orgName}</strong> just fired. {props.metricLabel} {props.operatorLabel}{' '}
@@ -66,7 +66,7 @@ export function AlertEmail(props: {
 
 export function UsageWarnEmail(props: { orgName: string; minutesUsed: number; capMinutes: number; appUrl: string }): ReactElement {
   return (
-    <Shell preview="You've used 80% of your Airtalk minutes">
+    <Shell preview="You've used 80% of your VoiceFlow minutes">
       <Heading as="h2">80% of your minutes used</Heading>
       <Text>
         <strong>{props.orgName}</strong> has used {Math.round(props.minutesUsed)} of its{' '}
@@ -83,7 +83,7 @@ export function UsageWarnEmail(props: { orgName: string; minutesUsed: number; ca
 export function UsageCappedEmail(props: { orgName: string; capMinutes: number; policy: string; appUrl: string }): ReactElement {
   const paused = props.policy === 'pause'
   return (
-    <Shell preview="Your Airtalk minute cap was reached">
+    <Shell preview="Your VoiceFlow minute cap was reached">
       <Heading as="h2">Minute cap reached</Heading>
       <Text>
         <strong>{props.orgName}</strong> used all {props.capMinutes} included minutes this month.{' '}
@@ -100,7 +100,7 @@ export function UsageCappedEmail(props: { orgName: string; capMinutes: number; p
 
 export function PaymentFailedEmail(props: { orgName: string; graceDays: number; appUrl: string }): ReactElement {
   return (
-    <Shell preview="Action needed: Airtalk payment failed">
+    <Shell preview="Action needed: VoiceFlow payment failed">
       <Heading as="h2">Payment failed</Heading>
       <Text>
         We couldn&apos;t charge the card on file for <strong>{props.orgName}</strong>. Update your
@@ -125,7 +125,7 @@ export interface WeeklySummaryProps {
 export function WeeklySummaryEmail(p: WeeklySummaryProps): ReactElement {
   return (
     <Shell preview={`${p.calls} calls, ${Math.round(p.minutes)} minutes this week`}>
-      <Heading as="h2">Your week on Airtalk</Heading>
+      <Heading as="h2">Your week on VoiceFlow</Heading>
       <Text>
         <strong>{p.orgName}</strong> handled <strong>{p.calls}</strong> call{p.calls === 1 ? '' : 's'} (
         {Math.round(p.minutes)} minutes) in the last 7 days.
@@ -178,7 +178,7 @@ export function AgentLearningEmail(p: AgentLearningProps): ReactElement {
         Your agent learned {p.totalSuggestions} new thing{p.totalSuggestions === 1 ? '' : 's'} this week
       </Heading>
       <Text>
-        From last week&apos;s calls for <strong>{p.orgName}</strong>, Airtalk drafted improvements
+        From last week&apos;s calls for <strong>{p.orgName}</strong>, VoiceFlow drafted improvements
         to your agent{p.agents.length === 1 ? '' : 's'}. Nothing changes until you review and
         apply them.
       </Text>

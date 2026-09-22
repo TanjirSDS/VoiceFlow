@@ -2,7 +2,7 @@
 
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
-import { serviceClient } from '@airtalk/db'
+import { serviceClient } from '@voiceflow/db'
 import { changePlan, listInvoices, portalUrl, type InvoiceRow } from '../../lib/billing'
 import { activeOrg } from '../../lib/org'
 import { stripeClient } from '../../lib/stripe'

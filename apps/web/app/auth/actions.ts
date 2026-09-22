@@ -1,7 +1,7 @@
 'use server'
 
 import { headers } from 'next/headers'
-import { getEnv } from '@airtalk/db'
+import { getEnv } from '@voiceflow/db'
 import { rateLimit } from '../../lib/ratelimit'
 import { userClient } from '../../lib/supabase-server'
 

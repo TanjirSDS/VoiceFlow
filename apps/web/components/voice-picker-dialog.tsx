@@ -3,7 +3,7 @@
 // Searchable voice picker (Phase 11): replaces the inline <select>. Table of
 // name / category / preview, category filter, and a curated Recommended row.
 // Provider-neutral — it only consumes the Voice[] the engine returns.
-import type { Voice } from '@airtalk/engine'
+import type { Voice } from '@voiceflow/engine'
 import { useMemo, useRef, useState } from 'react'
 import { SearchIcon } from './icons'
 import { Badge } from './ui/badge'

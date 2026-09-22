@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { ProviderCall } from '@airtalk/engine'
+import type { ProviderCall } from '@voiceflow/engine'
 import { diffCalls } from './reconcile'
 
 const call = (id: string, secs: number): ProviderCall => ({

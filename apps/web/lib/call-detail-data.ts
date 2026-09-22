@@ -1,4 +1,4 @@
-import { serviceClient } from '@airtalk/db'
+import { serviceClient } from '@voiceflow/db'
 import { joinedAgentName } from './call-filters'
 import { userClient } from './supabase-server'
 

@@ -1,4 +1,4 @@
-import type { SupabaseClient } from '@airtalk/db'
+import type { SupabaseClient } from '@voiceflow/db'
 import { externalNumber } from './opt-out'
 
 // Phase 14: a contact is one row per (org, phone number). The post-call webhook

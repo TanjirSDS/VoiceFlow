@@ -26,7 +26,7 @@ const sans = Manrope({
   display: 'swap',
 })
 
-export const metadata = { title: 'Airtalk', description: 'AI voice agents for small business' }
+export const metadata = { title: 'VoiceFlow', description: 'AI voice agents for small business' }
 
 async function signOut() {
   'use server'
@@ -158,7 +158,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             <div className="flex min-h-screen flex-col">
               <div className="flex items-center gap-3 px-6 py-5">
                 <Logo />
-                <span className="font-display text-lg font-semibold tracking-tight">Airtalk</span>
+                <span className="font-display text-lg font-semibold tracking-tight">VoiceFlow</span>
                 <Waveform className="ml-1 text-live" bars={4} />
               </div>
               <main className="flex flex-1 items-center justify-center px-6 pb-24">

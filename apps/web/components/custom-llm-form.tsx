@@ -63,7 +63,7 @@ export function CustomLlmForm({
           placeholder={initial.hasKey ? '•••••••• (stored — leave blank to keep)' : 'sk-…'}
         />
         <p className="mt-1 text-xs text-muted-foreground">
-          Stored as a secret at the provider — never saved in Airtalk.
+          Stored as a secret at the provider — never saved in VoiceFlow.
         </p>
       </div>
       <div className="flex items-center gap-3">

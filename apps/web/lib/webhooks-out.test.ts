@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { ElevenLabsEngine } from '@airtalk/engine'
+import { ElevenLabsEngine } from '@voiceflow/engine'
 import { attemptDelivery, enqueueWebhookEvent, OUTBOUND_SIG_HEADER, signBody } from './webhooks-out'
 
 // Producer/consumer symmetry (rule 2): what we sign, the engine verifier accepts.

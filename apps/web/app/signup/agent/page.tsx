@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import type { Voice } from '@airtalk/engine'
+import type { Voice } from '@voiceflow/engine'
 import { AgentWizard } from '../../../components/agent-wizard'
 import { Refresher } from '../../../components/refresher'
 import { SignupSteps } from '../../../components/signup-steps'

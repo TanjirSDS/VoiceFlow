@@ -10,9 +10,9 @@ import 'dotenv/config'
 import { config } from 'dotenv'
 config({ path: '.env.local' })
 
-import { getEnv, serviceClient } from '@airtalk/db'
+import { getEnv, serviceClient } from '@voiceflow/db'
 
-const [emailA = 'owner-a@airtalk.test', emailB = 'owner-b@airtalk.test'] = process.argv.slice(2)
+const [emailA = 'owner-a@voiceflow.test', emailB = 'owner-b@voiceflow.test'] = process.argv.slice(2)
 
 const ORGS = [
   { name: 'Org A (Acme Plumbing)', plan: 'starter', email: emailA },
