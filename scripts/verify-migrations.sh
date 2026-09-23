@@ -75,6 +75,31 @@ check "no migration left a broken view" "0" \
   "select count(*) from pg_class where relkind='v' and relnamespace='public'::regnamespace
    and pg_get_viewdef(oid) is null"
 
+# Phase 22 retention (0018). These are access-control invariants, not schema
+# trivia: each one, broken, is a way for call audio to outlive its window or
+# reach the wrong tenant — so they are asserted here rather than left to review.
+check "call-recordings bucket exists and is PRIVATE" "f" \
+  "select public from storage.buckets where id='call-recordings'"
+check "nothing grants direct access to the bucket" "0" \
+  "select count(*) from pg_policies where schemaname='storage' and tablename='objects'"
+check "storage.objects still has RLS on" "t" \
+  "select rowsecurity from pg_tables where schemaname='storage' and tablename='objects'"
+check "the retention sweep's index is partial" "1" \
+  "select count(*) from pg_indexes where schemaname='public'
+   and indexname='calls_recording_expiry_idx'
+   and indexdef like '%WHERE (recording_path IS NOT NULL)%'"
+# A tenant that can write calls can extend its own retention or orphan the object.
+check "tenants cannot write calls" "0" \
+  "select count(*) from (values ('anon'),('authenticated')) r(role), (values ('INSERT'),('UPDATE'),('DELETE')) p(priv)
+   where has_table_privilege(r.role, 'public.calls', p.priv)"
+check "tenants can still read calls" "2" \
+  "select count(*) from (values ('anon'),('authenticated')) r(role)
+   where has_table_privilege(r.role, 'public.calls', 'SELECT')"
+# ...and the revoke must not have reached the webhook/jobs/reconcile role.
+check "service_role keeps its writes to calls" "3" \
+  "select count(*) from (values ('INSERT'),('UPDATE'),('DELETE')) p(priv)
+   where has_table_privilege('service_role', 'public.calls', p.priv)"
+
 echo "==> re-running (must be a no-op)"
 rerun=$(npx tsx scripts/migrate.ts)
 echo "$rerun" | sed 's/^/    /'
