@@ -14,6 +14,7 @@ import {
   type AvailableNumber,
 } from '../../lib/numbers'
 import { activeOrg } from '../../lib/org'
+import { orgTwilioCreds } from '../../lib/twilio-subaccounts'
 import { provisionOrg } from '../../lib/orgs-write'
 import { stripeClient } from '../../lib/stripe'
 import { userClient } from '../../lib/db'
@@ -79,12 +80,12 @@ export async function searchNumbersAction(
   if (!org) return { error: 'Sign in first.' }
   const code = areaCode.trim()
   if (code && !/^\d{3}$/.test(code)) return { error: 'Area code is three digits, e.g. 415.' }
-  const env = getEnv()
   try {
-    const numbers = await searchAvailableNumbers(
-      { accountSid: env.TWILIO_ACCOUNT_SID, authToken: env.TWILIO_AUTH_TOKEN },
-      code || null
-    )
+    // Phase 23: search as the org, not as the parent. Available-number inventory
+    // is global so the results are the same either way — but buying happens in
+    // whichever account searched, so searching as the parent would drop the
+    // number into the shared account and hand the backfill more work.
+    const numbers = await searchAvailableNumbers(await orgTwilioCreds(org.orgId, org.name), code || null)
     if (!numbers.length) return { error: `No numbers available${code ? ` in ${code}` : ''} — try another area code.` }
     return { numbers }
   } catch (e) {
@@ -118,8 +119,9 @@ export async function buyNumberAction(e164: string): Promise<{ error?: string }>
   })
   if (blocked) return { error: blocked }
 
-  const env = getEnv()
-  const creds = { accountSid: env.TWILIO_ACCOUNT_SID, authToken: env.TWILIO_AUTH_TOKEN }
+  // Phase 23: the purchase lands directly in this org's subaccount, so no
+  // transfer is ever needed for a number bought after this phase.
+  const creds = await orgTwilioCreds(org.orgId, org.name)
   let bought: { twilioSid: string; e164: string }
   try {
     bought = await purchaseNumber(creds, e164)
@@ -139,6 +141,7 @@ export async function buyNumberAction(e164: string): Promise<{ error?: string }>
       agent_id: agent!.id,
       e164: bought.e164,
       twilio_sid: bought.twilioSid,
+      twilio_account_sid: creds.accountSid,
       provider_number_id: providerNumberId,
       status: 'active',
     })

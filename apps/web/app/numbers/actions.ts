@@ -1,10 +1,11 @@
 'use server'
 
-import { getEnv, serviceClient } from '@voiceflow/db'
+import { serviceClient } from '@voiceflow/db'
 import type { SipNumberConfig } from '@voiceflow/engine'
 import { revalidatePath } from 'next/cache'
 import { makeEngine } from '../../lib/engine'
 import { numberPurchaseBlocked, purchaseNumber, releaseNumber } from '../../lib/numbers'
+import { credsForNumber, orgTwilioCreds } from '../../lib/twilio-subaccounts'
 import { activeOrg, type ActiveOrg } from '../../lib/org'
 import { userClient } from '../../lib/db'
 
@@ -87,8 +88,8 @@ export async function buyNumberAction(e164: string): Promise<{ error?: string }>
   })
   if (blocked) return { error: blocked }
 
-  const env = getEnv()
-  const creds = { accountSid: env.TWILIO_ACCOUNT_SID, authToken: env.TWILIO_AUTH_TOKEN }
+  // Phase 23: buy inside the org's own subaccount (see lib/twilio-subaccounts.ts).
+  const creds = await orgTwilioCreds(org.orgId, org.name)
   let bought: { twilioSid: string; e164: string }
   try {
     bought = await purchaseNumber(creds, e164)
@@ -104,6 +105,7 @@ export async function buyNumberAction(e164: string): Promise<{ error?: string }>
       org_id: org.orgId,
       e164: bought.e164,
       twilio_sid: bought.twilioSid,
+      twilio_account_sid: creds.accountSid,
       provider_number_id: providerNumberId,
       status: 'active',
     })
@@ -185,11 +187,11 @@ export async function importSipNumberAction(formData: FormData): Promise<{ error
 /** Release: detach at provider → delete the EL phone-number record → release at
  *  Twilio (stops the monthly charge). SIP numbers skip the Twilio step. */
 export async function releaseNumberAction(numberId: string): Promise<{ error?: string }> {
-  await requireOwner()
+  const org = await requireOwner()
   const db = await userClient()
   const { data: number } = await db
     .from('phone_numbers')
-    .select('provider_number_id, twilio_sid, agent_id, status')
+    .select('provider_number_id, twilio_sid, twilio_account_sid, agent_id, status')
     .eq('id', numberId)
     .maybeSingle()
   if (!number) return { error: 'Number not found.' }
@@ -202,9 +204,12 @@ export async function releaseNumberAction(numberId: string): Promise<{ error?: s
       await engine.deleteNumber(number.provider_number_id)
     }
     if (number.twilio_sid) {
-      const env = getEnv()
+      // Phase 23: a number bought before this phase still lives in the parent
+      // account, so the ROW decides the credentials, not the org. Releasing an
+      // un-migrated number with the org's subaccount token would 404 and leave it
+      // billing — see credsForNumber().
       await releaseNumber(
-        { accountSid: env.TWILIO_ACCOUNT_SID, authToken: env.TWILIO_AUTH_TOKEN },
+        await credsForNumber(org.orgId, number.twilio_account_sid),
         number.twilio_sid
       )
     }

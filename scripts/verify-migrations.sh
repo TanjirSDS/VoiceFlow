@@ -152,6 +152,31 @@ check "service_role keeps its writes to calls" "3" \
   "select count(*) from (values ('INSERT'),('UPDATE'),('DELETE')) p(priv)
    where has_table_privilege('service_role', 'public.calls', p.priv)"
 
+# Phase 23 subaccount credentials (0019). The whole phase rests on one claim —
+# an org's Twilio token is reachable only by the service role — so it is asserted
+# here rather than trusted to review. Each failure below is a live credential
+# leak, not a style problem.
+check "tenants hold NO privilege on subaccount creds" "0" \
+  "select count(*) from (values ('anon'),('authenticated')) r(role),
+   (values ('SELECT'),('INSERT'),('UPDATE'),('DELETE')) p(priv)
+   where has_table_privilege(r.role, 'public.org_twilio_subaccounts', p.priv)"
+check "no policy re-opens subaccount creds" "0" \
+  "select count(*) from pg_policies where schemaname='public' and tablename='org_twilio_subaccounts'"
+check "subaccount creds have RLS on" "t" \
+  "select rowsecurity from pg_tables where schemaname='public' and tablename='org_twilio_subaccounts'"
+check "service_role can still read subaccount creds" "1" \
+  "select count(*) from (values ('SELECT')) p(priv)
+   where has_table_privilege('service_role', 'public.org_twilio_subaccounts', p.priv)"
+# Closing a subaccount releases its phone numbers and cannot be undone, so the
+# value must not be reachable through a normal status write.
+check "subaccount status cannot be set to closed" "0" \
+  "select count(*) from pg_constraint where conname like '%org_twilio_subaccounts_status%'
+   and pg_get_constraintdef(oid) like '%closed%'"
+check "the backfill's index is partial" "1" \
+  "select count(*) from pg_indexes where schemaname='public'
+   and indexname='phone_numbers_unmigrated_idx'
+   and indexdef like '%WHERE (twilio_account_sid IS NULL)%'"
+
 echo "==> re-running (must be a no-op)"
 rerun=$(npx tsx scripts/migrate.ts)
 echo "$rerun" | sed 's/^/    /'
