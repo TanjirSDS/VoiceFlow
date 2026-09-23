@@ -124,8 +124,10 @@ export function CallDetail({ detail }: { detail: CallDetailData }) {
         </TabsList>
 
         <TabsContent value="transcription">
+          {/* Always our route, never call.recording_url: the provider link is a
+              capability we can neither scope to an org nor expire (Phase 22). */}
           <CallPlayer
-            src={call.recording_url ?? `/api/calls/${call.id}/audio`}
+            src={`/api/calls/${call.id}/audio`}
             transcript={Array.isArray(call.transcript) ? call.transcript : []}
           />
         </TabsContent>

@@ -39,6 +39,16 @@ const schema = z.object({
   /** Optional: Inngest (Phase 6 async jobs). Without them the SDK runs in dev mode. */
   INNGEST_EVENT_KEY: z.string().min(1).optional(),
   INNGEST_SIGNING_KEY: z.string().min(1).optional(),
+  /** Optional: call-recording bucket (Phase 22) — a Railway Bucket, any S3 API.
+   *  Absent → recordings aren't archived and stream from the provider instead.
+   *  Railway: reference the bucket's ENDPOINT/BUCKET/REGION/ACCESS_KEY_ID/SECRET_ACCESS_KEY. */
+  S3_ENDPOINT: z.string().url().optional(),
+  S3_BUCKET: z.string().min(1).optional(),
+  S3_REGION: z.string().min(1).default('auto'),
+  S3_ACCESS_KEY_ID: z.string().min(1).optional(),
+  S3_SECRET_ACCESS_KEY: z.string().min(1).optional(),
+  /** Set for path-style endpoints (older Railway buckets, MinIO). */
+  S3_FORCE_PATH_STYLE: z.string().min(1).optional(),
   /** Optional: Upstash rate limiting (Phase 6). Limits are skipped when absent. */
   UPSTASH_REDIS_REST_URL: z.string().url().optional(),
   UPSTASH_REDIS_REST_TOKEN: z.string().min(1).optional(),

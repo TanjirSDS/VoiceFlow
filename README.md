@@ -19,13 +19,14 @@ Thin control plane over ElevenLabs Agents for small-business AI voice agents. Se
 
 ## Deploy (Railway)
 
-Three services in one Railway project:
+Four resources in one Railway project:
 
 | Service | Source | Networking |
 |---|---|---|
 | `Postgres` | Railway Postgres | private |
 | `postgrest` | Docker image `postgrest/postgrest:v16.3` | **private only — never generate a domain** |
 | `web` | this repo (root directory `/`, config `railway.json`) | public domain |
+| `recordings` | Railway Bucket (Phase 22 call audio) | private — buckets can't be public; audio is served via 300s presigned URLs |
 
 Project **shared variables** (both services read them): `POSTGREST_JWT_SECRET` and
 `POSTGREST_DB_PASSWORD` — `openssl rand -hex 32` each (hex: the password sits inside a URL).
@@ -45,7 +46,11 @@ PGRST_SERVER_PORT=3000
 `POSTGREST_URL=http://postgrest.railway.internal:3000`, `APP_URL=https://<web domain>`,
 `POSTGREST_JWT_SECRET=${{shared.POSTGREST_JWT_SECRET}}`,
 `POSTGREST_DB_PASSWORD=${{shared.POSTGREST_DB_PASSWORD}}` and a fresh `BETTER_AUTH_SECRET`.
-`RESEND_API_KEY` is required — sign-in links go out through it.
+`RESEND_API_KEY` is required — sign-in links go out through it. Recording archive:
+`S3_ENDPOINT=${{recordings.ENDPOINT}}`, `S3_BUCKET=${{recordings.BUCKET}}`,
+`S3_REGION=${{recordings.REGION}}`, `S3_ACCESS_KEY_ID=${{recordings.ACCESS_KEY_ID}}`,
+`S3_SECRET_ACCESS_KEY=${{recordings.SECRET_ACCESS_KEY}}` (without them, calls stay
+unarchived and the audio route streams from ElevenLabs).
 
 First deploy order: `web` first (its pre-deploy migrate creates the `authenticator` role and
 sets its password), then `postgrest` — until then PostgREST just retries its connection.

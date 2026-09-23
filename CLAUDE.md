@@ -1396,3 +1396,21 @@ normalizeCallEvent(payload) → CallEvent { providerCallId, direction, fromE164,
   shared-variable wiring; PGRST_SERVER_HOST=* on an IPv6-only env; a real Resend send.
   Turborepo strict env mode filters non-NEXT_PUBLIC_ vars from `npm run build` — harmless now
   (the build needs none) but remember it before adding a build-time env read.
+- MERGED WITH PHASE 22 (recording retention, landed on main mid-flight; it used Supabase
+  Storage): recordings now live in a RAILWAY BUCKET (S3 API, private by construction — Railway
+  has no public buckets). lib/object-store.ts = recordingStore() over aws4fetch (SigV4 on
+  fetch, one small dep; aws-sdk would be dozens), null when S3_* env is absent → archive skips,
+  unarchived audio streams from the provider, ARCHIVED audio fails closed (410). recordings.ts
+  takes an injected RecordingStore {put, signedUrl, remove} instead of db.storage; every
+  Phase 22 invariant kept (org check on the caller's RLS client BEFORE signing, path from the
+  row, 300s TTL, tombstone → 410, objects-then-rows sweep). signedUrl HEADs first: presigning
+  is local math and would sign a missing key, which Supabase refused — the swept → 410 path
+  depends on that. Virtual-hosted URLs by default (Railway), S3_FORCE_PATH_STYLE for old
+  buckets/MinIO. 0018 edited IN PLACE (unapplied anywhere real): dropped the storage.buckets
+  insert + storage.objects RLS assertion, kept columns/index/revoke/retention_days. verify:
+  storage checks dropped, "members can still read calls" is authenticated-only (anon has no
+  grants since 0000). Verified: recordings.test 19/19 (+2 no-bucket cases), migrate:verify 18
+  migrations + Phase 22 invariants, and object-store.ts against a live MinIO (quay.io image —
+  minio/minio is gone from Docker Hub): put, presigned GET 200 + bytes, Range 206, unsigned
+  403, cross-key signature 403, missing key → null, expiry → 403, idempotent delete. Railway's
+  virtual-hosted endpoint itself is still unprobed.

@@ -130,6 +130,28 @@ if ! npx vitest run packages/db/src/rls.test.ts; then
   fail=1
 fi
 
+# Phase 22 retention (0018). These are access-control invariants, not schema
+# trivia: each one, broken, is a way for call audio to outlive its window or
+# reach the wrong tenant — so they are asserted here rather than left to review.
+# (The bucket's privacy is Railway's — buckets there cannot be public — so
+# there is no storage schema to assert since Phase 21.)
+check "the retention sweep's index is partial" "1" \
+  "select count(*) from pg_indexes where schemaname='public'
+   and indexname='calls_recording_expiry_idx'
+   and indexdef like '%WHERE (recording_path IS NOT NULL)%'"
+# A tenant that can write calls can extend its own retention or orphan the object.
+check "tenants cannot write calls" "0" \
+  "select count(*) from (values ('anon'),('authenticated')) r(role), (values ('INSERT'),('UPDATE'),('DELETE')) p(priv)
+   where has_table_privilege(r.role, 'public.calls', p.priv)"
+# anon holds nothing at all since Phase 21 (0000 grants it no table), so only
+# members read — through RLS.
+check "members can still read calls" "t" \
+  "select has_table_privilege('authenticated', 'public.calls', 'SELECT')"
+# ...and the revoke must not have reached the webhook/jobs/reconcile role.
+check "service_role keeps its writes to calls" "3" \
+  "select count(*) from (values ('INSERT'),('UPDATE'),('DELETE')) p(priv)
+   where has_table_privilege('service_role', 'public.calls', p.priv)"
+
 echo "==> re-running (must be a no-op)"
 rerun=$(npx tsx scripts/migrate.ts)
 echo "$rerun" | sed 's/^/    /'
