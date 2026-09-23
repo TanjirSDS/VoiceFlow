@@ -11,6 +11,11 @@ const schema = z.object({
   ELEVENLABS_MAX_CONCURRENCY: z.coerce.number().int().positive().default(20),
   TWILIO_ACCOUNT_SID: z.string().min(1),
   TWILIO_AUTH_TOKEN: z.string().min(1),
+  /** Phase 23: AES-256-GCM key sealing each org's Twilio subaccount auth token
+   *  (32 bytes, base64 — `openssl rand -base64 32`). Required: without it the
+   *  per-org credential path cannot open a single stored token. Rotating it does
+   *  NOT lose data — the parent account can re-fetch every subaccount token. */
+  CREDENTIAL_ENCRYPTION_KEY: z.string().min(1),
   SUPABASE_URL: z.string().url(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
   /** Browser-side Supabase auth (Phase 4). Client components read process.env
