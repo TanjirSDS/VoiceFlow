@@ -21,16 +21,19 @@ function deps(over: Partial<ApiDeps> = {}): ApiDeps {
 const req = (headers: Record<string, string> = AUTH) =>
   new Request('https://api.voiceflow.test/api/v1/agents', { headers })
 
+// What Next hands a static route: a context whose params resolve to nothing.
+const NO_PARAMS = { params: Promise.resolve({}) }
+
 describe('withApiAuth', () => {
   test('runs the handler with the org the key resolved to', async () => {
-    const res = await withApiAuth(echoOrg, deps())(req(), {})
+    const res = await withApiAuth(echoOrg, deps())(req(), NO_PARAMS)
     expect(res.status).toBe(200)
     await expect(res.json()).resolves.toEqual({ orgId: 'org-1', keyId: 'key-1' })
   })
 
   test('scopes the database client to that org and nothing wider', async () => {
     const d = deps()
-    await withApiAuth(echoOrg, d)(req(), {})
+    await withApiAuth(echoOrg, d)(req(), NO_PARAMS)
     expect(d.dbFor).toHaveBeenCalledWith('org-1')
     expect(d.dbFor).toHaveBeenCalledTimes(1)
   })
@@ -47,7 +50,7 @@ describe('withApiAuth', () => {
           message: 'Invalid or revoked API key.',
         }),
       })
-    )(req(), {})
+    )(req(), NO_PARAMS)
 
     expect(res.status).toBe(401)
     expect(handler).not.toHaveBeenCalled()
@@ -70,7 +73,7 @@ describe('withApiAuth', () => {
           message: 'The public API is available on the Pro plan.',
         }),
       })
-    )(req(), {})
+    )(req(), NO_PARAMS)
 
     expect(res.status).toBe(403)
     expect(handler).not.toHaveBeenCalled()
@@ -81,7 +84,7 @@ describe('withApiAuth', () => {
   test('rate limiting is per key and returns 429 before the handler', async () => {
     const handler = vi.fn(echoOrg)
     const limiter = vi.fn(async () => ({ success: false }))
-    const res = await withApiAuth(handler, deps({ rateLimit: limiter }))(req(), {})
+    const res = await withApiAuth(handler, deps({ rateLimit: limiter }))(req(), NO_PARAMS)
 
     expect(res.status).toBe(429)
     expect(limiter).toHaveBeenCalledWith('key-1')
@@ -92,7 +95,7 @@ describe('withApiAuth', () => {
     const boom: ApiHandler = async () => {
       throw new Error('connection string postgres://user:hunter2@db/voiceflow')
     }
-    const res = await withApiAuth(boom, deps())(req(), {})
+    const res = await withApiAuth(boom, deps())(req(), NO_PARAMS)
     expect(res.status).toBe(500)
     const text = await res.text()
     expect(text).not.toContain('hunter2')
@@ -100,7 +103,7 @@ describe('withApiAuth', () => {
   })
 
   test('responses are JSON and must never be cached by an intermediary', async () => {
-    const res = await withApiAuth(echoOrg, deps())(req(), {})
+    const res = await withApiAuth(echoOrg, deps())(req(), NO_PARAMS)
     expect(res.headers.get('content-type')).toMatch(/application\/json/)
     expect(res.headers.get('cache-control')).toMatch(/no-store/)
   })
