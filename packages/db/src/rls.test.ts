@@ -1,37 +1,37 @@
-// Phase 4 acceptance: org A cannot see org B's data — proven with two authed
-// clients against a real Supabase (RLS lives in Postgres; it cannot be unit
-// tested). Skips when no Supabase env is configured. Also exercises
-// record_call_usage math live. Run: npm test (with .env.local present).
+// Phase 4 acceptance: org A cannot see org B's data — proven with two member
+// clients against a real Postgres + PostgREST (RLS lives in Postgres; it cannot
+// be unit tested). Skips when that env is absent; `npm run migrate:verify` runs
+// it against a throwaway stack. Also exercises record_call_usage math live.
 
 import { config } from 'dotenv'
 config({ path: '.env.local' })
 
-import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { Pool } from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { createDb, type Db } from './client'
 
-const URL = process.env.SUPABASE_URL
-const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
-const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-const live = !!(URL && SERVICE_KEY && ANON_KEY)
+const URL = process.env.POSTGREST_URL
+const SECRET = process.env.POSTGREST_JWT_SECRET
+const DATABASE_URL = process.env.DATABASE_URL
+const live = !!(URL && SECRET && DATABASE_URL)
 
 describe.skipIf(!live)('RLS org isolation (live)', () => {
-  const admin = live ? createClient(URL!, SERVICE_KEY!, { auth: { persistSession: false } }) : null!
+  const admin = live ? createDb(URL!, SECRET!, { role: 'service_role' }) : null!
+  const sql = live ? new Pool({ connectionString: DATABASE_URL }) : null!
   const stamp = `rls-test-${Date.now()}`
   const users: string[] = []
   const orgs: string[] = []
-  let clientA: SupabaseClient
-  let clientB: SupabaseClient
+  let clientA: Db
+  let clientB: Db
 
   async function makeUserAndOrg(tag: 'a' | 'b') {
     const email = `${stamp}-${tag}@voiceflow.test`
-    const password = `pw-${stamp}`
-    const { data: u, error: uErr } = await admin.auth.admin.createUser({
+    const {
+      rows: [u],
+    } = await sql.query<{ id: string }>('insert into auth.users (email, email_verified) values ($1, true) returning id', [
       email,
-      password,
-      email_confirm: true,
-    })
-    if (uErr) throw uErr
-    users.push(u.user.id)
+    ])
+    users.push(u.id)
 
     const { data: org, error: oErr } = await admin
       .from('orgs')
@@ -41,7 +41,7 @@ describe.skipIf(!live)('RLS org isolation (live)', () => {
     if (oErr) throw new Error(oErr.message)
     orgs.push(org.id)
 
-    await admin.from('org_members').insert({ org_id: org.id, user_id: u.user.id, role: 'owner' })
+    await admin.from('org_members').insert({ org_id: org.id, user_id: u.id, role: 'owner' })
     const { data: agentRow } = await admin
       .from('agents')
       .insert({ org_id: org.id, name: `${stamp}-agent-${tag}`, provider: 'elevenlabs' })
@@ -66,10 +66,8 @@ describe.skipIf(!live)('RLS org isolation (live)', () => {
       first_name: `${stamp}-${tag}`,
     })
 
-    const client = createClient(URL!, ANON_KEY!, { auth: { persistSession: false } })
-    const { error: sErr } = await client.auth.signInWithPassword({ email, password })
-    if (sErr) throw sErr
-    return client
+    // Exactly the token lib/db.ts userClient() signs for a signed-in member.
+    return createDb(URL!, SECRET!, { role: 'authenticated', sub: u.id })
   }
 
   beforeAll(async () => {
@@ -79,9 +77,28 @@ describe.skipIf(!live)('RLS org isolation (live)', () => {
 
   afterAll(async () => {
     if (!admin) return
-    for (const id of orgs) await admin.from('orgs').delete().eq('id', id) // cascades members/agents
-    for (const id of users) await admin.auth.admin.deleteUser(id)
+    // agents.org_id deliberately doesn't cascade (0004), so clear them first;
+    // everything else we inserted cascades from orgs. Loud, not silent — the
+    // old version never checked and would have leaked orgs on every run.
+    for (const table of ['agents', 'orgs'] as const) {
+      const { error } = await admin.from(table).delete().in(table === 'orgs' ? 'id' : 'org_id', orgs)
+      if (error) throw new Error(`cleanup ${table}: ${error.message}`)
+    }
+    await sql.query('delete from auth.users where id = any($1)', [users])
+    await sql.end()
   }, 60_000)
+
+  it('a request with no token is rejected, not answered', async () => {
+    const { data, error } = await createDb(URL!, SECRET!, null).from('orgs').select('id')
+    expect(data).toBeNull()
+    expect(error).toBeTruthy()
+  }, 30_000)
+
+  it('a token signed with the wrong secret is rejected', async () => {
+    const forged = createDb(URL!, 'x'.repeat(40), { role: 'service_role' })
+    const { error } = await forged.from('orgs').select('id')
+    expect(error).toBeTruthy()
+  }, 30_000)
 
   it('each member sees only their own org rows', async () => {
     const { data: aAgents } = await clientA.from('agents').select('name, org_id')
@@ -197,6 +214,6 @@ describe.skipIf(!live)('RLS org isolation (live)', () => {
 })
 
 it('rls live test env', () => {
-  if (!live) console.warn('RLS tests skipped — set SUPABASE_URL / keys in .env.local to run them')
+  if (!live) console.warn('RLS tests skipped — set POSTGREST_URL, POSTGREST_JWT_SECRET, DATABASE_URL (or run npm run migrate:verify)')
   expect(true).toBe(true)
 })

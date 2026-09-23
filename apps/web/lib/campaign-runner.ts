@@ -1,4 +1,4 @@
-import type { SupabaseClient } from '@voiceflow/db'
+import type { Db } from '@voiceflow/db'
 import type { VoiceEngine } from '@voiceflow/engine'
 import {
   CHUNK_SIZE,
@@ -22,7 +22,7 @@ export type ChunkResult =
   | { kind: 'throttled'; why: string } // at the concurrency ceiling — short sleep
 
 export async function dialChunk(
-  db: SupabaseClient,
+  db: Db,
   engine: VoiceEngine,
   campaignId: string,
   now = new Date()

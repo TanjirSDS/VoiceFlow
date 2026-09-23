@@ -4,7 +4,7 @@ import { Badge } from '../../../components/ui/badge'
 import { Button } from '../../../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card'
 import { estimatedSpendCents, type CallingWindow } from '../../../lib/campaign-math'
-import { userClient } from '../../../lib/supabase-server'
+import { userClient } from '../../../lib/db'
 import { killCampaignAction, pauseCampaignAction, startCampaignAction } from '../actions'
 
 export const dynamic = 'force-dynamic'

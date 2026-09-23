@@ -3,18 +3,7 @@
 import { config } from 'dotenv'
 config({ path: '.env.local' })
 
-import { serviceClient } from '@voiceflow/db'
-
-async function findUserByEmail(db: ReturnType<typeof serviceClient>, email: string) {
-  for (let page = 1; page <= 20; page++) {
-    const { data, error } = await db.auth.admin.listUsers({ page, perPage: 200 })
-    if (error) throw error
-    const hit = data.users.find((u) => u.email?.toLowerCase() === email)
-    if (hit) return hit
-    if (data.users.length < 200) return null
-  }
-  return null
-}
+import { ensureAuthUser, pool, serviceClient } from '@voiceflow/db'
 
 async function main() {
   const email = process.argv[2]?.trim().toLowerCase()
@@ -22,20 +11,15 @@ async function main() {
     console.error('usage: npm run seed-admin -- person@company.com')
     process.exit(1)
   }
-  const db = serviceClient()
-  let user = await findUserByEmail(db, email)
-  if (!user) {
-    const { data, error } = await db.auth.admin.createUser({ email, email_confirm: true })
-    if (error) throw error
-    user = data.user
-    console.log(`created auth user ${email}`)
-  }
-  const { error } = await db.from('admin_users').upsert({ user_id: user.id })
+  const userId = await ensureAuthUser(email)
+  const { error } = await serviceClient().from('admin_users').upsert({ user_id: userId })
   if (error) throw error
-  console.log(`✅ ${email} is a platform admin (user ${user.id})`)
+  console.log(`✅ ${email} is a platform admin (user ${userId})`)
 }
 
-main().catch((err) => {
-  console.error(err)
-  process.exit(1)
-})
+main()
+  .then(() => pool().end())
+  .catch((err) => {
+    console.error(err)
+    process.exit(1)
+  })

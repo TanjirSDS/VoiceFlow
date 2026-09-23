@@ -4,7 +4,7 @@
 // fire insert an alert_events row + notify the chosen channels. Driven by the
 // alert-evaluate Inngest cron (lib/jobs.ts) every 15 minutes.
 
-import type { SupabaseClient } from '@voiceflow/db'
+import type { Db } from '@voiceflow/db'
 import {
   ALERT_METRIC_LABELS,
   ALERT_OPERATOR_LABELS,
@@ -36,7 +36,7 @@ export interface AlertRow {
   last_fired_at: string | null
 }
 
-async function gatherInputs(db: SupabaseClient, alert: AlertRow, nowMs: number): Promise<MetricInputs> {
+async function gatherInputs(db: Db, alert: AlertRow, nowMs: number): Promise<MetricInputs> {
   const i: MetricInputs = { calls: [] }
   const m = alert.metric
   if (m === 'failure_rate' || m === 'call_count' || m === 'est_cost_cents') {
@@ -70,7 +70,7 @@ async function gatherInputs(db: SupabaseClient, alert: AlertRow, nowMs: number):
 }
 
 /** Evaluate one alert; returns true if it fired. db must be the service client. */
-export async function evaluateAlert(db: SupabaseClient, alert: AlertRow, nowMs: number = Date.now()): Promise<boolean> {
+export async function evaluateAlert(db: Db, alert: AlertRow, nowMs: number = Date.now()): Promise<boolean> {
   const inputs = await gatherInputs(db, alert, nowMs)
   const value = computeMetric(alert.metric, inputs)
   const conditionMet = compare(value, alert.operator, Number(alert.threshold))

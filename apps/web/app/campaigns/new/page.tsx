@@ -1,5 +1,5 @@
 import { CampaignWizard } from '../../../components/campaign-wizard'
-import { userClient } from '../../../lib/supabase-server'
+import { userClient } from '../../../lib/db'
 
 export const dynamic = 'force-dynamic'
 

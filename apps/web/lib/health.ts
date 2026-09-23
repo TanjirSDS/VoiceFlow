@@ -1,5 +1,5 @@
 import type Stripe from 'stripe'
-import type { SupabaseClient } from '@voiceflow/db'
+import type { Db } from '@voiceflow/db'
 import type { VoiceEngine } from '@voiceflow/engine'
 
 export interface CheckResult {
@@ -44,7 +44,7 @@ export async function runHealthChecks<K extends string>(
 }
 
 /** The app's real dependencies: Postgres, Stripe, and the voice provider. */
-export function appProbes(db: SupabaseClient, stripe: Stripe, engine: VoiceEngine) {
+export function appProbes(db: Db, stripe: Stripe, engine: VoiceEngine) {
   return {
     db: async () => {
       const { error } = await db.from('plans').select('id', { count: 'exact', head: true })

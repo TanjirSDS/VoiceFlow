@@ -1,5 +1,5 @@
 // Phase 17 alerting — pure, unit-tested (CLAUDE.md rule 7): metric derivation +
-// the crossing/cooldown decision. No Supabase/Inngest here; the evaluator cron
+// the crossing/cooldown decision. No DB/Inngest here; the evaluator cron
 // (lib/alerts.ts) gathers the data and feeds these functions.
 
 export type AlertMetric = 'failure_rate' | 'call_count' | 'usage_pct' | 'est_cost_cents' | 'provider_down'

@@ -18,7 +18,7 @@ function sign(body: string) {
   return `t=${t},v0=${createHmac('sha256', SECRET).update(`${t}.${body}`).digest('hex')}`
 }
 
-// In-memory stand-in for supabase covering exactly the calls the handler makes.
+// In-memory stand-in for the db client covering exactly the calls the handler makes.
 // The real idempotency guarantee is the UNIQUE constraint in 0001_init.sql;
 // ignoreDuplicates mimics `on conflict do nothing`.
 function fakeDb() {

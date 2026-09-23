@@ -1,4 +1,4 @@
-import { getEnv, type SupabaseClient } from '@voiceflow/db'
+import { getEnv, type Db } from '@voiceflow/db'
 import {
   dialHeadroom,
   liveConcurrency,
@@ -22,7 +22,7 @@ function poolLimit(): number {
 }
 
 /** The org's own ceiling, from its plan. Falls back to the column default. */
-async function orgConcurrencyLimit(db: SupabaseClient, orgId: string): Promise<number> {
+async function orgConcurrencyLimit(db: Db, orgId: string): Promise<number> {
   const { data, error } = await db
     .from('orgs')
     // Explicit FK hint: orgs points at plans twice (plan_id + pending_plan_id).
@@ -34,7 +34,7 @@ async function orgConcurrencyLimit(db: SupabaseClient, orgId: string): Promise<n
   return plan?.max_concurrent ?? 2
 }
 
-async function callRows(db: SupabaseClient, orgId: string | null, sinceIso: string) {
+async function callRows(db: Db, orgId: string | null, sinceIso: string) {
   let q = db
     .from('calls')
     .select('provider_call_id, started_at, duration_secs, org_id')
@@ -57,7 +57,7 @@ const toInterval = (c: { provider_call_id: string | null; started_at: string | n
  * pool queries can disagree (an org count taken after a pool count can exceed
  * it), and the guard compares them against each other.
  */
-async function liveSnapshot(db: SupabaseClient, orgId: string, now: Date) {
+async function liveSnapshot(db: Db, orgId: string, now: Date) {
   const since = new Date(now.getTime() - LIVE_WINDOW_MINS * 60_000).toISOString()
   const [calls, flagged] = await Promise.all([
     callRows(db, null, since),
@@ -94,7 +94,7 @@ async function liveSnapshot(db: SupabaseClient, orgId: string, now: Date) {
  * the shared pool is full, whichever binds first (§8 row 6).
  */
 export async function dialDecision(
-  db: SupabaseClient,
+  db: Db,
   orgId: string,
   now = new Date()
 ): Promise<DialDecision> {
@@ -115,7 +115,7 @@ export interface PeakWindow {
 }
 
 /** Peak across every tenant since `sinceIso` — what the shared pool actually saw. */
-export async function poolPeak(db: SupabaseClient, sinceIso: string): Promise<PeakWindow> {
+export async function poolPeak(db: Db, sinceIso: string): Promise<PeakWindow> {
   const { peak, at } = peakConcurrency((await callRows(db, null, sinceIso)).map(toInterval))
   const limit = poolLimit()
   return { peak, at, limit, pct: limit > 0 ? Math.round((peak / limit) * 100) : 0 }

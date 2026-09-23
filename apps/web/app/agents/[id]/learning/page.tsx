@@ -17,7 +17,7 @@ import {
 } from '../../../../components/ui/card'
 import { Input } from '../../../../components/ui/input'
 import { activeOrg } from '../../../../lib/org'
-import { userClient } from '../../../../lib/supabase-server'
+import { userClient } from '../../../../lib/db'
 import { applySuggestionsAction, dismissSuggestionAction } from '../../actions'
 
 export const dynamic = 'force-dynamic'

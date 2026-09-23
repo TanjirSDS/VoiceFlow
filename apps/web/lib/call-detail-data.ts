@@ -1,6 +1,6 @@
 import { serviceClient } from '@voiceflow/db'
 import { joinedAgentName } from './call-filters'
-import { userClient } from './supabase-server'
+import { userClient } from './db'
 
 // Server-only fetch shared by the /calls drawer (?call=<id>) and the
 // /calls/[id] full page, so both render the identical CallDetail component.

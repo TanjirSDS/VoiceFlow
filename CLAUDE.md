@@ -8,11 +8,12 @@ Twilio integration). Our code NEVER touches audio.
 ## STACK (do not deviate without asking)
 
 - Turborepo monorepo: apps/web (Next.js 15 App Router, TypeScript, Tailwind, shadcn/ui),
-  packages/engine (provider adapter), packages/db (Supabase client + types + SQL migrations —
+  packages/engine (provider adapter), packages/db (PostgREST + pg clients + SQL migrations —
   packages/db/migrations is the ONLY schema source; apply with `npm run migrate`)
-- Supabase: Postgres + Auth + Storage. All tenant tables have org_id with RLS.
+- Postgres on Railway (NOT Supabase, since Phase 21) behind our own private PostgREST;
+  Better Auth (magic link) for auth. All tenant tables have org_id with RLS.
 - Stripe Billing, Twilio (numbers only), ElevenLabs Agents API, Sentry, Inngest (Phase 6+).
-- Deploy: Vercel. Env vars via .env.local, validated with zod in a single env.ts.
+- Deploy: Railway (railway.json). Env vars via .env.local, validated with zod in a single env.ts.
 
 ## HARD RULES
 
@@ -1309,3 +1310,89 @@ normalizeCallEvent(payload) → CallEvent { providerCallId, direction, fromE164,
   pgvector/pgvector:pg16 image already on disk via the VERIFY_PG_IMAGE override. The script
   still DEFAULTS to postgres:17 to match config.toml's major_version. Nothing in these
   migrations is version-specific (plain DDL, RLS, plpgsql), but a 17 run is still owed.
+
+### Phase 21 Railway Postgres + PostgREST + Better Auth (2026-09-23)
+- STACK CHANGE (decided with Tanjir): no Supabase anywhere. Railway runs 3 services —
+  `Postgres` (Railway), `postgrest` (image postgrest/postgrest:v16.3, PRIVATE — no public
+  domain), `web` (this repo via root railway.json). The browser never talked to Supabase
+  directly (only server code imported supabase-js), so PostgREST needs no internet exposure;
+  RLS is now defence in depth, not the only wall. Nothing Railway-specific lives in code —
+  moving hosts = rewrite railway.json + variable wiring only.
+- DATA LAYER: kept every one of the 281 .from()/.rpc() calls. @supabase/postgrest-js is the
+  standalone builder supabase-js wraps (same API; talks to `${url}/table` not
+  `${url}/rest/v1/table`). packages/db/src/client.ts: createDb(url, secret, claims) signs a
+  FRESH 60s HS256 JWT per request inside a custom fetch (node:crypto, no dep) — long Inngest
+  jobs can never hold an expired token. serviceClient() = {role:'service_role'} (BYPASSRLS);
+  userDb(userId) = {role:'authenticated', sub} → auth.uid(). No session → no token →
+  PostgREST 401 PGRST302 (no anon role configured), never an empty-but-successful read.
+  Type SupabaseClient renamed Db everywhere; apps/web/lib/supabase-server.ts → lib/db.ts.
+  pool() (pg) is for what PostgREST doesn't expose: the auth schema (owner emails in
+  lib/email.ts, the login existence check, middleware membership check, scripts).
+- 0000_platform.sql (sorts first; 0001–0016 untouched/checksum-stable): roles anon (exists
+  only because 0004/0006 revoke from it by name — no grants), authenticated, service_role
+  (bypassrls), authenticator (login noinherit, granted the other two) — each created only if
+  missing (roles are CLUSTER-wide). Supabase's default privileges MINUS anon (grant all on
+  future public tables/sequences/functions to authenticated+service_role; RLS does the
+  scoping, verified: every public table has RLS on). auth schema + auth.uid() (reads
+  request.jwt.claims sub; nullif guards the '' a tx-local GUC reverts to) + Better Auth's 4
+  tables. The authenticator PASSWORD is never committed: scripts/migrate.ts sets it from
+  POSTGREST_DB_PASSWORD on every run (rotation = redeploy) and sends
+  `notify pgrst, 'reload schema'` after applying anything (Supabase did that for us; without
+  it new columns are invisible until PostgREST restarts).
+- BETTER AUTH (1.7.5, apps/web/lib/auth.ts, lazy getAuth() like getEnv so `next build`
+  needs no secrets): own pg Pool with search_path=auth; tables users/sessions/accounts/
+  verifications with snake_case field maps; advanced.database.generateId='uuid' so
+  auth.users(id) stays the uuid every existing FK references. magicLink({expiresIn 15m,
+  storeToken:'hashed'}) — verified the DB holds a hash, the link the token, and a link works
+  exactly once. nextCookies() last. Verify endpoint /api/auth/magic-link/verify
+  (app/api/auth/[...all], plain wrappers so getAuth stays lazy) replaced
+  app/auth/callback (deleted). disableSignUp is GLOBAL-only in Better Auth and users are
+  created at CLICK time, so login's no-silent-signup = sendMagicLinkAction checks auth.users
+  first ("No account for that email — sign up instead."). Magic-link email now sent by OUR
+  code (MagicLinkEmail via lib/email.ts/Resend) — the Phase 6 "point Supabase SMTP at Resend"
+  step is gone. No RESEND_API_KEY: dev prints the link to the next-dev log; production throws
+  (500 + log line) rather than silently not sending. Login ?error=<CODE> → friendly text.
+- currentUser() (React cache) replaced all 15 db.auth.getUser() calls; it awaits headers()
+  BEFORE getAuth() — reversed order made `next build` read env while prerendering (JS
+  evaluates the callee before the args). Middleware runs runtime:'nodejs' (stable in 15.5) so
+  getSession hits the sessions table (a cookie-presence check is forgeable); returnHeaders:
+  true + forwarding Set-Cookie replaces @supabase/ssr's session refresh. Sign-out =
+  auth.api.signOut (deletes the session row).
+- /api/health?scope=db = Railway's deploy healthcheck (app → PostgREST → Postgres). The full
+  check 503s when Stripe/ElevenLabs are down — as a deploy gate that would block shipping the
+  fix for an outage (with placeholder keys it 503'd every time).
+- PGRST_DB_MAX_ROWS=20000: /analytics and /qa .limit(20_000) but hosted Supabase caps at
+  1000 — those pages would have silently truncated. Our own PostgREST makes the intended cap
+  real (and bounds every unbounded select at 20k).
+- DELETED: supabase/ (config.toml, snippets, and the untracked 0009–0015 copies — cmp-verified
+  identical first), scripts/testdb/supabase-shim.sql (0000 replaces it — verify now tests the
+  REAL bootstrap), @supabase/supabase-js + @supabase/ssr, the CSP's *.supabase.co origins.
+  pg is now a RUNTIME dep of packages/db (Phase 19 had it dev-only).
+- Env: SUPABASE_* ×4 → DATABASE_URL, POSTGREST_URL, POSTGREST_JWT_SECRET (≥32),
+  BETTER_AUTH_SECRET (≥32) in env.ts; POSTGREST_DB_PASSWORD read only by migrate.ts. Secrets
+  in PGRST_DB_URI must be hex (base64's / + break the URL). docker-compose.yml = local stack
+  (postgres:17 + postgrest v16.3 on 54322/54321, defaults match .env.example).
+- VERIFIED (2026-09-23, first time ANY of this ran against a real database): all 17
+  migrations on empty Postgres 17 (clears Phase 19's owed PG17 run) — native AND via
+  `npm run migrate:verify` (now postgres:17 + postgrest:v16.3 containers, schema asserts, the
+  live rls.test through PostgREST, no-op re-run). rls.test 10/10 (+2: tokenless → 401,
+  wrong-secret JWT rejected); negative-probed — disabling RLS on agents fails exactly the 2
+  agents cases. rls.test cleanup was leaking 2 orgs per run (agents.org_id doesn't cascade;
+  the old delete never checked errors) — fixed + now throws. Full app on the local stack:
+  magic link send → hashed token → verify → cookie → /dashboard renders org A; owner B sees
+  only org B even with a forged active-org cookie; CSV export A=20 rows / B=0; every main
+  page 200 with a clean log; login action refuses unknown emails, signup creates a uuid user
+  routed to /signup/org; sign-out deletes the session. `next build` clean with NO new secrets
+  (bypass off), and `next start` (prod, Node middleware) gate + session + RLS verified.
+  typecheck + lint (provider fence intact) clean; 254 unit tests pass.
+- HAZARD FOUND + FIXED: verify-migrations.sh's default :55432 was already held by a native
+  Postgres (another project's test DB). Docker Desktop bound 0.0.0.0 while the native server
+  held 127.0.0.1, so the "throwaway" migrate landed in THAT server's `postgres` database.
+  Cleaned up exactly (only VoiceFlow objects were there; its own database untouched; the
+  shared authenticator role's password changed but that server is trust-auth). The script now
+  refuses to start if either port already answers, and defaults moved to 55532/55534.
+- NOT YET VERIFIED LIVE (needs the Railway project): that Railway's Postgres user can CREATE
+  ROLE … BYPASSRLS (inferred superuser — if not, 0000 fails loudly and the deploy stops);
+  shared-variable wiring; PGRST_SERVER_HOST=* on an IPv6-only env; a real Resend send.
+  Turborepo strict env mode filters non-NEXT_PUBLIC_ vars from `npm run build` — harmless now
+  (the build needs none) but remember it before adding a build-time env read.

@@ -3,8 +3,7 @@ import type { ReactElement, ReactNode } from 'react'
 
 // All transactional emails in one file — they share one shell and are each a
 // handful of lines. Sent via lib/email.ts (Resend renders the React tree).
-// The magic-link email is NOT here: Supabase Auth sends it through its own
-// mailer (point Supabase at Resend SMTP in the dashboard — see .env.example).
+// MagicLinkEmail is sent by Better Auth's magicLink plugin (lib/auth.ts).
 
 const body = { backgroundColor: '#f6f6f6', fontFamily: 'ui-sans-serif, system-ui, sans-serif' }
 const card = { backgroundColor: '#ffffff', borderRadius: 8, margin: '40px auto', padding: 32, maxWidth: 520 }
@@ -23,6 +22,18 @@ function Shell({ preview, children }: { preview: string; children: ReactNode }) 
         </Container>
       </Body>
     </Html>
+  )
+}
+
+export function MagicLinkEmail({ url }: { url: string }): ReactElement {
+  return (
+    <Shell preview="Your VoiceFlow sign-in link">
+      <Heading as="h2">Sign in to VoiceFlow</Heading>
+      <Text>
+        <Link href={url}>Click here to sign in →</Link>
+      </Text>
+      <Text>This link works once and expires in 15 minutes. If you didn&apos;t ask for it, ignore this email.</Text>
+    </Shell>
   )
 }
 

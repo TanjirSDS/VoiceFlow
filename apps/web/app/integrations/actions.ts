@@ -1,11 +1,12 @@
 'use server'
 
 import { randomBytes } from 'node:crypto'
-import { serviceClient, type SupabaseClient } from '@voiceflow/db'
+import { serviceClient, type Db } from '@voiceflow/db'
 import { revalidatePath } from 'next/cache'
 import { listEventTypes } from '../../lib/calcom'
 import { activeOrg, type ActiveOrg } from '../../lib/org'
-import { userClient } from '../../lib/supabase-server'
+import { userClient } from '../../lib/db'
+import { currentUser } from '../../lib/auth'
 
 const CRM_PROVIDERS = ['hubspot', 'salesforce'] as const
 
@@ -21,10 +22,8 @@ async function requireOwner(): Promise<ActiveOrg> {
   return org
 }
 
-async function currentUserEmail(db: SupabaseClient): Promise<string> {
-  const {
-    data: { user },
-  } = await db.auth.getUser()
+async function currentUserEmail(): Promise<string> {
+  const user = await currentUser()
   return user?.email ?? 'system'
 }
 
@@ -95,7 +94,7 @@ export async function createWebhookEndpointAction(input: {
       url,
       secret,
       events,
-      created_by: await currentUserEmail(db),
+      created_by: await currentUserEmail(),
     })
     if (error) throw new Error(error.message)
     revalidatePath('/integrations')

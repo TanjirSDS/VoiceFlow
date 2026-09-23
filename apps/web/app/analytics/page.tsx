@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
-import type { SupabaseClient } from '@voiceflow/db'
+import type { Db } from '@voiceflow/db'
 import {
   AnalyticsCharts,
   type BreakdownBar,
@@ -24,7 +24,7 @@ import {
 import { applyCallFilters, formatCents, formatDuration, parseCallFilters } from '../../lib/call-filters'
 import { activeOrg, currentUsage } from '../../lib/org'
 import { OUTCOME_COLORS, OUTCOMES } from '../../lib/outcome'
-import { userClient } from '../../lib/supabase-server'
+import { userClient } from '../../lib/db'
 
 export const dynamic = 'force-dynamic'
 
@@ -45,7 +45,7 @@ interface Row {
   analysis: { success?: boolean } | null
 }
 
-async function fetchCalls(db: SupabaseClient, filters: ReturnType<typeof parseCallFilters>): Promise<Row[]> {
+async function fetchCalls(db: Db, filters: ReturnType<typeof parseCallFilters>): Promise<Row[]> {
   const { data, error } = await applyCallFilters(
     db.from('calls').select('started_at, duration_secs, outcome, direction, agent_id, analysis'),
     filters

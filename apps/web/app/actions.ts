@@ -5,7 +5,8 @@ import { redirect } from 'next/navigation'
 import { emit } from '../lib/events'
 import { ACTIVE_ORG_COOKIE } from '../lib/org'
 import { provisionOrg } from '../lib/orgs-write'
-import { userClient } from '../lib/supabase-server'
+import { userClient } from '../lib/db'
+import { currentUser } from '../lib/auth'
 
 const COOKIE_OPTS = {
   httpOnly: true,
@@ -19,9 +20,7 @@ const COOKIE_OPTS = {
 // server component re-renders against the new org.
 export async function switchWorkspaceAction(orgId: string): Promise<{ error?: string } | void> {
   const db = await userClient()
-  const {
-    data: { user },
-  } = await db.auth.getUser()
+  const user = await currentUser()
   if (!user) redirect('/login')
   const { data: membership } = await db
     .from('org_members')
@@ -47,9 +46,7 @@ export async function createWorkspaceAction(
   if (name.length > 80) return { error: 'Keep the name under 80 characters.' }
 
   const db = await userClient()
-  const {
-    data: { user },
-  } = await db.auth.getUser()
+  const user = await currentUser()
   if (!user) redirect('/login')
 
   const { orgId, error } = await provisionOrg(user.id, name)

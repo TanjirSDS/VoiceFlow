@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation'
-import { userClient } from './supabase-server'
+import { userClient } from './db'
+import { currentUser } from './auth'
 
 export interface AdminUser {
   userId: string
@@ -9,9 +10,7 @@ export interface AdminUser {
 /** The signed-in user iff they're in admin_users (RLS lets them see their own row). */
 export async function adminUser(): Promise<AdminUser | null> {
   const db = await userClient()
-  const {
-    data: { user },
-  } = await db.auth.getUser()
+  const user = await currentUser()
   if (!user) return null
   const { data } = await db.from('admin_users').select('user_id').eq('user_id', user.id).maybeSingle()
   return data ? { userId: user.id, email: user.email ?? '' } : null

@@ -1,44 +1,50 @@
-import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { pool } from '@voiceflow/db'
+import { getAuth } from './lib/auth'
 
 // Signature-verified or secret-guarded machine routes, plus the login/signup flows.
-const PUBLIC_PREFIXES = ['/login', '/signup', '/auth', '/share', '/api/webhooks', '/api/cron', '/api/health', '/api/inngest', '/api/tools']
+const PUBLIC_PREFIXES = [
+  '/login',
+  '/signup',
+  '/auth',
+  '/share',
+  '/api/auth',
+  '/api/webhooks',
+  '/api/cron',
+  '/api/health',
+  '/api/inngest',
+  '/api/tools',
+]
 
-// Refreshes the Supabase session cookie and gates everything else behind login.
-// Org resolution happens per-request in lib/org.ts (RLS does the actual scoping).
+// Gates everything else behind a real session check (Node runtime, so Better
+// Auth validates against the sessions table — a cookie-presence check could be
+// forged). Org resolution happens per-request in lib/org.ts (RLS does the scoping).
 export async function middleware(req: NextRequest) {
-  let res = NextResponse.next({ request: req })
   // ponytail: DEV_BYPASS_AUTH=1 skips the login gate — local skeleton preview
   // only (no signed-in user exists). Delete once local signup works.
-  if (process.env.DEV_BYPASS_AUTH === '1') return res
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll: () => req.cookies.getAll(),
-        setAll: (all) => {
-          all.forEach(({ name, value }) => req.cookies.set(name, value))
-          res = NextResponse.next({ request: req })
-          all.forEach(({ name, value, options }) => res.cookies.set(name, value, options))
-        },
-      },
-    }
-  )
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  if (process.env.DEV_BYPASS_AUTH === '1') return NextResponse.next()
+  // returnHeaders: a session past its daily refresh comes back with a new
+  // Set-Cookie, which every response below forwards (was @supabase/ssr's job).
+  const { headers: authHeaders, response: session } = await getAuth().api.getSession({
+    headers: req.headers,
+    returnHeaders: true,
+  })
+  const user = session?.user
+  const send = (res: NextResponse) => {
+    for (const c of authHeaders.getSetCookie()) res.headers.append('set-cookie', c)
+    return res
+  }
 
   const path = req.nextUrl.pathname
   if (!user && !PUBLIC_PREFIXES.some((p) => path.startsWith(p))) {
-    return NextResponse.redirect(new URL('/login', req.url))
+    return send(NextResponse.redirect(new URL('/login', req.url)))
   }
 
   // Phase 6: a signed-in user with no org is mid-signup — route them into the
   // flow instead of an empty app. Skipped for admins impersonating an org
   // (activeOrg validates the cookie; a spoofed one is simply ignored there).
-  // ponytail: one indexed RLS select per authenticated page request — move the
-  // membership bit into a JWT claim if this ever shows up in latency.
+  // ponytail: one indexed select per authenticated page request — cache the
+  // membership bit on the session if this ever shows up in latency.
   if (
     user &&
     !path.startsWith('/signup') &&
@@ -47,12 +53,13 @@ export async function middleware(req: NextRequest) {
     !path.startsWith('/admin') && // support staff have no memberships
     !req.cookies.get('admin-view-org')
   ) {
-    const { data: membership } = await supabase.from('org_members').select('org_id').limit(1).maybeSingle()
-    if (!membership) return NextResponse.redirect(new URL('/signup/org', req.url))
+    const { rowCount } = await pool().query('select 1 from public.org_members where user_id = $1 limit 1', [user.id])
+    if (!rowCount) return send(NextResponse.redirect(new URL('/signup/org', req.url)))
   }
-  return res
+  return send(NextResponse.next())
 }
 
 export const config = {
+  runtime: 'nodejs', // stable since Next 15.5; needed for pg + a real session lookup
   matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 }

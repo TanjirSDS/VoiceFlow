@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { AlertsManager, type AlertRow, type EndpointOption } from '../../components/alerts-manager'
 import { ALERT_METRIC_LABELS, ALERT_OPERATOR_LABELS, type AlertMetric, type AlertOperator } from '../../lib/alerts-eval'
 import { cn } from '../../lib/utils'
-import { userClient } from '../../lib/supabase-server'
+import { userClient } from '../../lib/db'
 
 export const dynamic = 'force-dynamic'
 

@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import { NumberPicker } from '../../../components/number-picker'
 import { SignupSteps } from '../../../components/signup-steps'
 import { activeOrg } from '../../../lib/org'
-import { userClient } from '../../../lib/supabase-server'
+import { userClient } from '../../../lib/db'
 
 export const dynamic = 'force-dynamic'
 

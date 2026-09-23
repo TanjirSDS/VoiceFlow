@@ -1,6 +1,6 @@
 // Phase 16 QA derivations — pure, unit-tested (CLAUDE.md rule 7). These numbers
 // surface in customer conversations, so they get their own tested module. No
-// Supabase imports. Bucketing is reused from analytics-math so /qa and /analytics
+// DB imports. Bucketing is reused from analytics-math so /qa and /analytics
 // split a date range into the same buckets.
 import { bucketKey, buildBuckets, chooseGranularity } from './analytics-math'
 

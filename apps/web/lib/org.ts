@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers'
 import { cache } from 'react'
-import { userClient } from './supabase-server'
+import { userClient } from './db'
+import { currentUser } from './auth'
 
 /** Org-switcher cookie (Phase 9): the workspace the user last switched to.
  *  Honored by activeOrg() below when it names an org they're a member of. */
@@ -84,9 +85,7 @@ export const activeOrg = cache(async (): Promise<ActiveOrg | null> => {
     }
   }
 
-  const {
-    data: { user },
-  } = await db.auth.getUser()
+  const user = await currentUser()
   if (!user) return null
 
   // Phase 6 support impersonation: an admin_users member with the view-as
@@ -191,9 +190,7 @@ export interface Membership {
  *  (no signed-in user) — the switcher then just shows the active org. */
 export const listMemberships = cache(async (): Promise<Membership[]> => {
   const db = await userClient()
-  const {
-    data: { user },
-  } = await db.auth.getUser()
+  const user = await currentUser()
   if (!user) return []
   const { data } = await db
     .from('org_members')

@@ -10,7 +10,7 @@ import 'dotenv/config'
 import { config } from 'dotenv'
 config({ path: '.env.local' })
 
-import { getEnv, serviceClient } from '@voiceflow/db'
+import { ensureAuthUser, getEnv, pool, serviceClient } from '@voiceflow/db'
 
 const [emailA = 'owner-a@voiceflow.test', emailB = 'owner-b@voiceflow.test'] = process.argv.slice(2)
 
@@ -30,16 +30,7 @@ async function main() {
   const userIds: string[] = []
   for (const spec of ORGS) {
     // user: magic-link only, so just create it confirmed; no password needed
-    const { data: created, error: userErr } = await db.auth.admin.createUser({
-      email: spec.email,
-      email_confirm: true,
-    })
-    let userId = created?.user?.id
-    if (userErr) {
-      const { data: list } = await db.auth.admin.listUsers()
-      userId = list?.users.find((u) => u.email === spec.email)?.id
-      if (!userId) throw new Error(`create user ${spec.email}: ${userErr.message}`)
-    }
+    const userId = await ensureAuthUser(spec.email)
 
     const cap = plans!.find((p) => p.id === spec.plan)!.included_minutes
     const { data: existing } = await db.from('orgs').select('id').eq('name', spec.name).maybeSingle()
@@ -79,7 +70,9 @@ async function main() {
   }
 }
 
-main().catch((e) => {
-  console.error(e)
-  process.exit(1)
-})
+main()
+  .then(() => pool().end())
+  .catch((e) => {
+    console.error(e)
+    process.exit(1)
+  })

@@ -6,7 +6,7 @@ import { revalidatePath } from 'next/cache'
 import { makeEngine } from '../../lib/engine'
 import { numberPurchaseBlocked, purchaseNumber, releaseNumber } from '../../lib/numbers'
 import { activeOrg, type ActiveOrg } from '../../lib/org'
-import { userClient } from '../../lib/supabase-server'
+import { userClient } from '../../lib/db'
 
 // Rule 3: adding/removing numbers spends (or stops) money — every action is
 // owner-gated and re-checks the plan cap server-side. RLS scopes every read/write

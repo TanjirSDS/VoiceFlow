@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Manrope, Space_Grotesk } from 'next/font/google'
 import Link from 'next/link'
-import { cookies } from 'next/headers'
+import { cookies, headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { AppShell } from '../components/app-shell'
 import { Logo, Waveform } from '../components/icons'
@@ -10,7 +10,8 @@ import { Toaster } from '../components/ui/sonner'
 import { exitViewAsAction } from './admin/actions'
 import { graceDaysLeft } from '../lib/billing-math'
 import { activeOrg, currentUsage, listMemberships } from '../lib/org'
-import { userClient } from '../lib/supabase-server'
+import { userClient } from '../lib/db'
+import { currentUser, getAuth } from '../lib/auth'
 import './globals.css'
 
 const display = Space_Grotesk({
@@ -30,8 +31,7 @@ export const metadata = { title: 'VoiceFlow', description: 'AI voice agents for 
 
 async function signOut() {
   'use server'
-  const db = await userClient()
-  await db.auth.signOut()
+  await getAuth().api.signOut({ headers: await headers() })
   redirect('/login')
 }
 
@@ -175,15 +175,12 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
 
 // Assemble everything the sidebar shell needs in one place.
 async function shellData(org: NonNullable<Awaited<ReturnType<typeof activeOrg>>>) {
-  const [usage, memberships, jar, db] = await Promise.all([
+  const [usage, memberships, jar, user] = await Promise.all([
     currentUsage(org.orgId),
     listMemberships(),
     cookies(),
-    userClient(),
+    currentUser(),
   ])
-  const {
-    data: { user },
-  } = await db.auth.getUser()
   const now = new Date()
   return {
     activeOrgId: org.orgId,

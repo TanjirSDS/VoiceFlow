@@ -8,7 +8,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '..
 import { includedRateCentsPerMin, OVERAGE_CENTS_PER_MIN } from '../../../lib/billing-math'
 import { makeEngine } from '../../../lib/engine'
 import { activeOrg } from '../../../lib/org'
-import { userClient } from '../../../lib/supabase-server'
+import { userClient } from '../../../lib/db'
 import type { VersionRow } from '../../../components/versions-sheet'
 
 export const dynamic = 'force-dynamic'

@@ -1,9 +1,9 @@
 'use server'
 
 import { headers } from 'next/headers'
-import { getEnv } from '@voiceflow/db'
+import { pool } from '@voiceflow/db'
+import { getAuth } from '../../lib/auth'
 import { rateLimit } from '../../lib/ratelimit'
-import { userClient } from '../../lib/supabase-server'
 
 export interface MagicLinkState {
   sent?: boolean
@@ -35,16 +35,20 @@ export async function sendMagicLinkAction(
     return { error: 'Too many attempts — try again in a few minutes.' }
   }
 
-  const origin = h.get('origin') ?? getEnv().APP_URL ?? `https://${h.get('host')}`
-  const next = mode === 'signup' ? '/signup/org' : '/dashboard'
-  const db = await userClient()
-  const { error } = await db.auth.signInWithOtp({
-    email,
-    options: {
-      emailRedirectTo: `${origin}/auth/callback?next=${encodeURIComponent(next)}`,
-      shouldCreateUser: mode === 'signup',
-    },
-  })
-  if (error) return { error: error.message }
+  // Better Auth can only disable signup globally (and creates the user when the
+  // link is CLICKED), so login's no-silent-signup check happens here.
+  if (mode === 'login') {
+    const { rowCount } = await pool().query('select 1 from auth.users where email = $1', [email])
+    if (!rowCount) return { error: 'No account for that email — sign up instead.' }
+  }
+  try {
+    await getAuth().api.signInMagicLink({
+      // Fixed destinations, never user input, so no open-redirect check needed.
+      body: { email, callbackURL: mode === 'signup' ? '/signup/org' : '/dashboard', errorCallbackURL: '/login' },
+      headers: h,
+    })
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : 'Could not send the sign-in link.' }
+  }
   return { sent: true }
 }
