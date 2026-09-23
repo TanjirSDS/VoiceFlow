@@ -1,10 +1,13 @@
 import type { ReactNode } from 'react'
 import type { SupabaseClient } from '@voiceflow/db'
+import { ConcurrencyMeter } from '../../components/concurrency-meter'
 import { DashboardCharts, type DayPoint, type WeekPoint } from '../../components/dashboard-charts'
 import { ClockIcon, GaugeIcon, PhoneIcon, TimerIcon } from '../../components/icons'
 import { userClient } from '../../lib/supabase-server'
 import { Card } from '../../components/ui/card'
 import { formatDuration } from '../../lib/call-filters'
+import { peakConcurrency } from '../../lib/concurrency-math'
+import { activeOrg } from '../../lib/org'
 import { OUTCOMES } from '../../lib/outcome'
 
 export const dynamic = 'force-dynamic'
@@ -46,7 +49,7 @@ function weekStart(d: Date) {
 export default async function DashboardPage() {
   // ponytail: aggregates computed in JS over one 8-week fetch — move to a SQL
   // view when call volume makes the row transfer noticeable.
-  const calls = await fetchRecentCalls(await userClient())
+  const [calls, org] = await Promise.all([fetchRecentCalls(await userClient()), activeOrg()])
   const now = new Date()
 
   const today = utcDayKey(now)
@@ -92,6 +95,19 @@ export default async function DashboardPage() {
     }
   })
 
+  // Peak concurrency (Phase 20, architecture §3): ElevenLabs caps SIMULTANEOUS
+  // calls, so this is the number that forces a plan upgrade — and it is derived
+  // from the same 8-week fetch above, over the same 30 days the line chart shows.
+  const windowStart = new Date(now)
+  windowStart.setUTCDate(windowStart.getUTCDate() - (DAYS - 1))
+  windowStart.setUTCHours(0, 0, 0, 0)
+  const windowIso = windowStart.toISOString()
+  const peak = peakConcurrency(
+    calls
+      .filter((c) => c.started_at && c.started_at >= windowIso)
+      .map((c) => ({ startedAt: c.started_at, durationSecs: c.duration_secs }))
+  )
+
   const byWeek: WeekPoint[] = Array.from({ length: WEEKS }, (_, i) => {
     const start = weekStart(now)
     start.setUTCDate(start.getUTCDate() - (WEEKS - 1 - i) * 7)
@@ -129,6 +145,16 @@ export default async function DashboardPage() {
           </Card>
         ))}
       </div>
+
+      {org && (
+        <ConcurrencyMeter
+          peak={peak.peak}
+          limit={org.plan.maxConcurrent}
+          at={peak.at}
+          planName={org.plan.name}
+          windowLabel={`last ${DAYS} days`}
+        />
+      )}
 
       <DashboardCharts perDay={perDay} byWeek={byWeek} />
     </div>

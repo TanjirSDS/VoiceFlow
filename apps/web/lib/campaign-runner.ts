@@ -7,6 +7,7 @@ import {
   isDialableNow,
   type CallingWindow,
 } from './campaign-math'
+import { dialDecision } from './concurrency'
 
 // One runner tick (rule 3: cap + kill switch on every money loop). The Inngest
 // function calls this between sleeps, so pause/kill are honored within one tick
@@ -18,6 +19,7 @@ export type ChunkResult =
   | { kind: 'done'; reason: 'exhausted' | 'spend_cap' }
   | { kind: 'dialed'; count: number }
   | { kind: 'wait'; why: string } // nothing dialable right now — long sleep
+  | { kind: 'throttled'; why: string } // at the concurrency ceiling — short sleep
 
 export async function dialChunk(
   db: SupabaseClient,
@@ -93,8 +95,18 @@ export async function dialChunk(
     .slice(0, CHUNK_SIZE)
   if (!dialable.length) return { kind: 'wait', why: 'outside calling window' }
 
+  // Dial-time concurrency ceiling (architecture §3 + §8 row 6). ElevenLabs caps
+  // SIMULTANEOUS calls and every tenant shares that pool, so a busy campaign can
+  // otherwise get the whole platform's calls rejected at the provider. Never
+  // start more than the org's plan limit or the pool still has room for.
+  // 'throttled' rather than 'wait' on purpose: the runner's short 30s tick picks
+  // the campaign straight back up when a slot frees, instead of sleeping out a
+  // 15-minute window over a condition that clears in seconds.
+  const room = await dialDecision(db, campaign.org_id, now)
+  if (room.blocked) return { kind: 'throttled', why: room.why ?? 'at concurrency limit' }
+
   let count = 0
-  for (const contact of dialable) {
+  for (const contact of dialable.slice(0, room.slots)) {
     try {
       const { providerCallId } = await engine.startOutboundCall(
         agent.provider_agent_id,
