@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { ContactsTable, type ContactUIRow } from '../../components/contacts-table'
-import { userClient } from '../../lib/supabase-server'
+import { userClient } from '../../lib/db'
 
 export const dynamic = 'force-dynamic'
 

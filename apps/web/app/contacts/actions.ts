@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { activeOrg } from '../../lib/org'
-import { userClient } from '../../lib/supabase-server'
+import { userClient } from '../../lib/db'
 
 export interface ContactPatch {
   first_name?: string | null

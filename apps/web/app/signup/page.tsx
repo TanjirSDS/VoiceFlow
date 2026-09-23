@@ -3,13 +3,10 @@ import { redirect } from 'next/navigation'
 import { MagicLinkForm } from '../../components/magic-link-form'
 import { SignupSteps } from '../../components/signup-steps'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
-import { userClient } from '../../lib/supabase-server'
+import { currentUser } from '../../lib/auth'
 
 export default async function SignupPage() {
-  const db = await userClient()
-  const {
-    data: { user },
-  } = await db.auth.getUser()
+  const user = await currentUser()
   if (user) redirect('/signup/org') // already signed in — continue the flow
 
   return (

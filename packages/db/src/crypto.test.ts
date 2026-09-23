@@ -11,10 +11,11 @@ beforeAll(() => {
     TWILIO_ACCOUNT_SID: 'ACparent',
     TWILIO_AUTH_TOKEN: 'parent-token',
     CREDENTIAL_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64'),
-    SUPABASE_URL: 'https://example.supabase.co',
-    SUPABASE_SERVICE_ROLE_KEY: 'x',
-    NEXT_PUBLIC_SUPABASE_URL: 'https://example.supabase.co',
-    NEXT_PUBLIC_SUPABASE_ANON_KEY: 'x',
+    // Phase 21 replaced Supabase with Railway Postgres + our own PostgREST.
+    DATABASE_URL: 'postgresql://postgres:postgres@127.0.0.1:54322/postgres',
+    POSTGREST_URL: 'http://127.0.0.1:54321',
+    POSTGREST_JWT_SECRET: 'test-postgrest-jwt-secret-at-least-32-chars',
+    BETTER_AUTH_SECRET: 'test-better-auth-secret-at-least-32-chars',
     STRIPE_SECRET_KEY: 'x',
     STRIPE_WEBHOOK_SECRET: 'x',
   })

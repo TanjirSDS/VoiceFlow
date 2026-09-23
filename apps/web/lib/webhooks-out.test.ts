@@ -26,7 +26,7 @@ describe('signBody', () => {
   })
 })
 
-// Minimal in-memory supabase stand-in covering exactly the calls the module makes.
+// Minimal in-memory db stand-in covering exactly the calls the module makes.
 function fakeDb(seed: { endpoints?: any[]; deliveries?: any[] } = {}) {
   const tables: Record<string, any[]> = {
     webhook_endpoints: seed.endpoints ?? [],

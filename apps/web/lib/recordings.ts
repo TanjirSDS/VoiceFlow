@@ -1,6 +1,6 @@
 // Phase 22 — recording retention (architecture §12 Q4). Copy finished-call audio
-// into a PRIVATE Supabase Storage bucket, serve it through short-lived signed
-// URLs, delete it when the org's window runs out.
+// into a PRIVATE bucket (a Railway Bucket since Phase 21 — lib/object-store.ts),
+// serve it through short-lived signed URLs, delete it when the org's window runs out.
 //
 // The security property this file exists to hold:
 //
@@ -11,15 +11,23 @@
 //
 // Hence the shape of resolveRecording: the lookup runs on the CALLER's RLS-scoped
 // client (org B simply gets no row for org A's call, which the route turns into a
-// 404), and only then does the service client sign the path that row carried.
+// 404), and only then does the store sign the path that row carried.
 //
 // Logic lives here rather than in the route/job so it can be tested against an
-// in-memory Supabase without a live project — see recordings.test.ts.
+// in-memory db + bucket without live infra — see recordings.test.ts.
 
-import type { SupabaseClient } from '@voiceflow/db'
+import type { Db } from '@voiceflow/db'
 import type { VoiceEngine } from '@voiceflow/engine'
 
-export const RECORDING_BUCKET = 'call-recordings'
+/** The bucket, injected so tests can swap in an in-memory one. Production:
+ *  recordingStore() in lib/object-store.ts (null when no bucket is configured). */
+export interface RecordingStore {
+  put(path: string, body: ArrayBuffer, contentType: string): Promise<void>
+  /** Null when the object doesn't exist — never a URL for a missing object. */
+  signedUrl(path: string, ttlSecs: number): Promise<string | null>
+  /** Idempotent: deleting a missing key is not an error. */
+  remove(paths: string[]): Promise<void>
+}
 
 // Long enough to play a call through and seek around in it (the browser keeps
 // using this one URL for Range requests), short enough that a URL that leaks out
@@ -69,12 +77,12 @@ export type RecordingResolution =
  * Decide what to serve for `callId`.
  *
  * `userDb` MUST be the RLS-scoped client for the signed-in user — it is the org
- * check, not a convenience. `service` only ever sees a path that came back from
+ * check, not a convenience. `store` only ever sees a path that came back from
  * that scoped read.
  */
 export async function resolveRecording(
-  userDb: SupabaseClient,
-  service: SupabaseClient,
+  userDb: Db,
+  store: RecordingStore | null,
   callId: string,
   now: Date = new Date()
 ): Promise<RecordingResolution> {
@@ -111,13 +119,14 @@ export async function resolveRecording(
     return { kind: 'not-found' }
   }
 
-  const { data, error } = await service.storage
-    .from(RECORDING_BUCKET)
-    .createSignedUrl(call.recording_path, SIGNED_URL_TTL_SECS)
+  // No bucket configured but the row says archived: fail closed, same as a
+  // missing object — never fall back to the provider for archived audio.
+  if (!store) return { kind: 'gone' }
+  const url = await store.signedUrl(call.recording_path, SIGNED_URL_TTL_SECS).catch(() => null)
   // A missing object (swept between the read and the sign) is 'gone', not a 500.
-  if (error || !data?.signedUrl) return { kind: 'gone' }
+  if (!url) return { kind: 'gone' }
 
-  return { kind: 'signed', url: data.signedUrl, expiresInSecs: SIGNED_URL_TTL_SECS }
+  return { kind: 'signed', url, expiresInSecs: SIGNED_URL_TTL_SECS }
 }
 
 /** True when `path` is inside `orgId`'s folder — a real segment match, not a bare prefix. */
@@ -136,11 +145,14 @@ export type ArchiveResult =
  * retry or a replayed webhook re-uploads nothing.
  */
 export async function archiveCallRecording(
-  db: SupabaseClient,
+  db: Db,
+  store: RecordingStore | null,
   engine: VoiceEngine,
   providerCallId: string,
   now: Date = new Date()
 ): Promise<ArchiveResult> {
+  // No bucket (local dev): the route keeps streaming from the provider.
+  if (!store) return { kind: 'skipped', reason: 'no recording bucket configured' }
   const { data: call } = await db
     .from('calls')
     .select('id, org_id, provider_call_id, recording_path, recording_expires_at')
@@ -168,13 +180,11 @@ export async function archiveCallRecording(
 
   const { audio, contentType } = await engine.fetchRecording(call.provider_call_id)
   const path = recordingObjectPath(call.org_id, call.id, contentType)
-  const { error: upErr } = await db.storage.from(RECORDING_BUCKET).upload(path, audio, {
-    contentType: baseContentType(contentType) || 'audio/mpeg',
-    // A retry that got past the idempotency check above (row updated, upload
-    // half-done) must overwrite rather than fail.
-    upsert: true,
+  // S3 PUT overwrites, so a retry that got past the idempotency check above
+  // (row not yet stamped, upload half-done) re-uploads rather than fails.
+  await store.put(path, audio, baseContentType(contentType) || 'audio/mpeg').catch((err) => {
+    throw new Error(`recording upload failed for call ${call.id}: ${err instanceof Error ? err.message : err}`)
   })
-  if (upErr) throw new Error(`recording upload failed for call ${call.id}: ${upErr.message}`)
 
   const expiresAt = recordingExpiry(now, days)
   const { error: updErr } = await db
@@ -189,7 +199,7 @@ export async function archiveCallRecording(
   // Leaving an uploaded object with no row pointing at it means nothing will
   // ever sweep it — bin it and let the retry re-do both halves.
   if (updErr) {
-    await db.storage.from(RECORDING_BUCKET).remove([path])
+    await store.remove([path])
     throw new Error(`recording stamp failed for call ${call.id}: ${updErr.message}`)
   }
 
@@ -206,7 +216,8 @@ export async function archiveCallRecording(
  * deletes — the one outcome a retention feature must not produce.
  */
 export async function sweepExpiredRecordings(
-  db: SupabaseClient,
+  db: Db,
+  store: RecordingStore,
   now: Date = new Date(),
   batch = 500
 ): Promise<{ deleted: number; bytes: number }> {
@@ -220,10 +231,11 @@ export async function sweepExpiredRecordings(
   if (!due?.length) return { deleted: 0, bytes: 0 }
 
   const paths = due.map((c) => c.recording_path as string)
-  const { error: rmErr } = await db.storage.from(RECORDING_BUCKET).remove(paths)
   // Storage refused the batch: stop. Clearing the rows now would strand the
   // audio in the bucket with nothing left pointing at it.
-  if (rmErr) throw new Error(`recording sweep failed to delete ${paths.length} object(s): ${rmErr.message}`)
+  await store.remove(paths).catch((err) => {
+    throw new Error(`recording sweep failed to delete ${paths.length} object(s): ${err instanceof Error ? err.message : err}`)
+  })
 
   const { error: updErr } = await db
     .from('calls')

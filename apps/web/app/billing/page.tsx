@@ -11,7 +11,7 @@ import { annualPriceCents } from '../../lib/billing-math'
 import { formatCents } from '../../lib/call-filters'
 import { activeOrg, type ActiveOrg } from '../../lib/org'
 import { stripeClient } from '../../lib/stripe'
-import { userClient } from '../../lib/supabase-server'
+import { userClient } from '../../lib/db'
 import { cn } from '../../lib/utils'
 import { choosePlanAction, portalAction } from './actions'
 

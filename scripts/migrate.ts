@@ -7,7 +7,8 @@
 //   npm run migrate -- --dry-run    # show what would run, change nothing
 //
 // Needs DATABASE_URL (a direct Postgres connection, not the PostgREST URL):
-// Supabase dashboard → Project Settings → Database → Connection string → URI.
+// Railway → Postgres service → Variables. On Railway this runs as the web
+// service's preDeployCommand (railway.json), so a deploy migrates first.
 //
 // Idempotent: each applied file is recorded in migrations.schema_migrations and
 // skipped next run. Each file runs in its own transaction, so a failure leaves
@@ -56,8 +57,8 @@ function loadMigrations(): Migration[] {
   })
 }
 
-// Own schema, not public: config.toml exposes only public + graphql_public over
-// the API, so the ledger stays off PostgREST instead of relying on grants.
+// Own schema, not public: PostgREST exposes only public (PGRST_DB_SCHEMAS), so
+// the ledger stays off the API instead of relying on grants.
 const LEDGER = `
   create schema if not exists migrations;
   create table if not exists migrations.schema_migrations (
@@ -115,11 +116,6 @@ async function main() {
       return
     }
 
-    if (pending.length === 0) {
-      console.log(`up to date — ${applied.size} migrations applied`)
-      return
-    }
-
     for (const m of pending) {
       process.stdout.write(`applying ${m.file} ... `)
       await client.query('begin')
@@ -138,6 +134,21 @@ async function main() {
       }
     }
 
+    // Phase 21: PostgREST logs in as `authenticator` (0000). Set on every run,
+    // so rotating POSTGREST_DB_PASSWORD is just a redeploy of both services.
+    const pgrstPassword = process.env.POSTGREST_DB_PASSWORD
+    if (pgrstPassword) {
+      await client.query(`alter role authenticator with login password ${client.escapeLiteral(pgrstPassword)}`)
+    }
+
+    if (pending.length === 0) {
+      console.log(`up to date — ${applied.size} migrations applied`)
+      return
+    }
+
+    // PostgREST caches the schema; without this a new column stays invisible
+    // to the app until PostgREST restarts (Supabase did this for us).
+    await client.query(`notify pgrst, 'reload schema'`)
     console.log(`\napplied ${pending.length} migration(s); ${migrations.length} total`)
   } finally {
     await client.end()

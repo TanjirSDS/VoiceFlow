@@ -1,10 +1,11 @@
 'use server'
 
-import type { SupabaseClient } from '@voiceflow/db'
+import type { Db } from '@voiceflow/db'
 import { revalidatePath } from 'next/cache'
 import type { AlertMetric, AlertOperator } from '../../lib/alerts-eval'
 import { activeOrg, type ActiveOrg } from '../../lib/org'
-import { userClient } from '../../lib/supabase-server'
+import { userClient } from '../../lib/db'
+import { currentUser } from '../../lib/auth'
 
 const METRICS: AlertMetric[] = ['failure_rate', 'call_count', 'usage_pct', 'est_cost_cents', 'provider_down']
 const OPERATORS: AlertOperator[] = ['gt', 'gte', 'lt', 'lte']
@@ -26,10 +27,8 @@ async function requireOrg(): Promise<ActiveOrg> {
   return org
 }
 
-async function currentUserEmail(db: SupabaseClient): Promise<string> {
-  const {
-    data: { user },
-  } = await db.auth.getUser()
+async function currentUserEmail(): Promise<string> {
+  const user = await currentUser()
   return user?.email ?? 'system'
 }
 
@@ -65,7 +64,7 @@ export async function createAlertAction(input: AlertInput): Promise<{ error?: st
     const org = await requireOrg()
     const { error } = await db
       .from('alerts')
-      .insert({ ...toRow(input), org_id: org.orgId, created_by: await currentUserEmail(db) })
+      .insert({ ...toRow(input), org_id: org.orgId, created_by: await currentUserEmail() })
     if (error) throw new Error(error.message)
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) }

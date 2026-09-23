@@ -1,6 +1,6 @@
 import type { NextRequest } from 'next/server'
 import { applyCallFilters, joinedAgentName, parseCallFilters } from '../../../lib/call-filters'
-import { userClient } from '../../../lib/supabase-server'
+import { userClient } from '../../../lib/db'
 
 export const dynamic = 'force-dynamic'
 

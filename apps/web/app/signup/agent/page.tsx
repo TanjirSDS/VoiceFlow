@@ -7,7 +7,7 @@ import { SignupSteps } from '../../../components/signup-steps'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../components/ui/card'
 import { makeEngine } from '../../../lib/engine'
 import { activeOrg } from '../../../lib/org'
-import { userClient } from '../../../lib/supabase-server'
+import { userClient } from '../../../lib/db'
 
 export const dynamic = 'force-dynamic'
 

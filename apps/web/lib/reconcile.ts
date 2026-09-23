@@ -1,4 +1,4 @@
-import type { SupabaseClient } from '@voiceflow/db'
+import type { Db } from '@voiceflow/db'
 import type { ProviderCall, VoiceEngine } from '@voiceflow/engine'
 import { backfillOrgContacts } from './contacts'
 import { currentPeriodUsage, pauseOrgAgents } from './usage'
@@ -45,7 +45,7 @@ async function reportDiscrepancy(msg: string) {
  * recompute usage_periods from the calls table for every affected org+month.
  * db must be the service client.
  */
-export async function reconcileYesterday(db: SupabaseClient, engine: VoiceEngine, now = new Date()) {
+export async function reconcileYesterday(db: Db, engine: VoiceEngine, now = new Date()) {
   const dayStart = new Date(now)
   dayStart.setUTCHours(0, 0, 0, 0)
   dayStart.setUTCDate(dayStart.getUTCDate() - 1)
@@ -164,7 +164,7 @@ export async function reconcileYesterday(db: SupabaseClient, engine: VoiceEngine
   }
 }
 
-async function enforceAfterRecompute(db: SupabaseClient, engine: VoiceEngine, orgId: string, period: string) {
+async function enforceAfterRecompute(db: Db, engine: VoiceEngine, orgId: string, period: string) {
   const usage = await currentPeriodUsage(db, orgId, period)
   if (!usage || usage.minutes_used < usage.minutes_cap) return
   const { data: org } = await db.from('orgs').select('overage_policy').eq('id', orgId).maybeSingle()

@@ -16,20 +16,22 @@ const schema = z.object({
    *  per-org credential path cannot open a single stored token. Rotating it does
    *  NOT lose data — the parent account can re-fetch every subaccount token. */
   CREDENTIAL_ENCRYPTION_KEY: z.string().min(1),
-  SUPABASE_URL: z.string().url(),
-  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
-  /** Browser-side Supabase auth (Phase 4). Client components read process.env
-   *  directly (Next.js inlines NEXT_PUBLIC_*); listed here so server code and
-   *  scripts fail fast when they're missing. */
-  NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
-  NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1),
+  /** Phase 21: Railway Postgres. Better Auth + auth-schema lookups connect
+   *  directly; everything else goes through PostgREST. */
+  DATABASE_URL: z.string().url(),
+  /** Our private PostgREST (Railway: http://postgrest.railway.internal:3000). */
+  POSTGREST_URL: z.string().url(),
+  /** Shared with the PostgREST service as PGRST_JWT_SECRET (≥32 chars). */
+  POSTGREST_JWT_SECRET: z.string().min(32),
+  /** Signs Better Auth session cookies (≥32 chars). */
+  BETTER_AUTH_SECRET: z.string().min(32),
   /** Stripe billing (Phase 5). Webhook secret comes from the endpoint config
    *  (dashboard or `stripe listen`). */
   STRIPE_SECRET_KEY: z.string().min(1),
   STRIPE_WEBHOOK_SECRET: z.string().min(1),
   /** Optional: outcome extraction (Phase 3) is skipped when absent. */
   OPENAI_API_KEY: z.string().min(1).optional(),
-  /** Optional: shared secret for /api/cron/* (Vercel sends it as a Bearer token). */
+  /** Optional: shared secret for /api/cron/* (sent as a Bearer token). */
   CRON_SECRET: z.string().min(1).optional(),
   /** Optional: reconciliation discrepancies are reported to Sentry when set. */
   SENTRY_DSN: z.string().url().optional(),
@@ -42,6 +44,16 @@ const schema = z.object({
   /** Optional: Inngest (Phase 6 async jobs). Without them the SDK runs in dev mode. */
   INNGEST_EVENT_KEY: z.string().min(1).optional(),
   INNGEST_SIGNING_KEY: z.string().min(1).optional(),
+  /** Optional: call-recording bucket (Phase 22) — a Railway Bucket, any S3 API.
+   *  Absent → recordings aren't archived and stream from the provider instead.
+   *  Railway: reference the bucket's ENDPOINT/BUCKET/REGION/ACCESS_KEY_ID/SECRET_ACCESS_KEY. */
+  S3_ENDPOINT: z.string().url().optional(),
+  S3_BUCKET: z.string().min(1).optional(),
+  S3_REGION: z.string().min(1).default('auto'),
+  S3_ACCESS_KEY_ID: z.string().min(1).optional(),
+  S3_SECRET_ACCESS_KEY: z.string().min(1).optional(),
+  /** Set for path-style endpoints (older Railway buckets, MinIO). */
+  S3_FORCE_PATH_STYLE: z.string().min(1).optional(),
   /** Optional: Upstash rate limiting (Phase 6). Limits are skipped when absent. */
   UPSTASH_REDIS_REST_URL: z.string().url().optional(),
   UPSTASH_REDIS_REST_TOKEN: z.string().min(1).optional(),

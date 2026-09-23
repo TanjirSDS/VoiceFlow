@@ -3,9 +3,9 @@ import { normalizeStoredConfigSafe } from '@voiceflow/engine/templates'
 import { AgentsTable, type AgentRow } from '../../components/agents-table'
 import { makeEngine } from '../../lib/engine'
 import { activeOrg } from '../../lib/org'
-import { userClient } from '../../lib/supabase-server'
+import { userClient } from '../../lib/db'
 
-export const dynamic = 'force-dynamic' // hits Supabase + the provider voices API
+export const dynamic = 'force-dynamic' // hits the database + the provider voices API
 
 export default async function AgentsPage() {
   const db = await userClient()

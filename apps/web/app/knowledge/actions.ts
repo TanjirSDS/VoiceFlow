@@ -1,11 +1,12 @@
 'use server'
 
-import type { SupabaseClient } from '@voiceflow/db'
+import type { Db } from '@voiceflow/db'
 import type { KnowledgeSource } from '@voiceflow/engine'
 import { revalidatePath } from 'next/cache'
 import { makeEngine } from '../../lib/engine'
 import { activeOrg, type ActiveOrg } from '../../lib/org'
-import { userClient } from '../../lib/supabase-server'
+import { userClient } from '../../lib/db'
+import { currentUser } from '../../lib/auth'
 
 // Multi-tenant fence (item 1): every read/write below goes through the RLS-scoped
 // user client, so a member only ever touches their own org's kb_documents rows —
@@ -18,10 +19,8 @@ async function requireKb(): Promise<ActiveOrg> {
   return org
 }
 
-async function currentUserEmail(db: SupabaseClient): Promise<string> {
-  const {
-    data: { user },
-  } = await db.auth.getUser()
+async function currentUserEmail(): Promise<string> {
+  const user = await currentUser()
   return user?.email ?? 'system'
 }
 
@@ -61,7 +60,7 @@ export async function createKbDocAction(formData: FormData): Promise<{ error?: s
     provider_kb_id: created.knowledgeId,
     name,
     source_type: sourceType,
-    created_by: await currentUserEmail(db),
+    created_by: await currentUserEmail(),
   })
   if (error) {
     // The registry insert failed — don't leave an orphaned workspace doc behind.

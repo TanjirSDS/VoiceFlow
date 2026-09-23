@@ -17,7 +17,8 @@ import { activeOrg } from '../../lib/org'
 import { orgTwilioCreds } from '../../lib/twilio-subaccounts'
 import { provisionOrg } from '../../lib/orgs-write'
 import { stripeClient } from '../../lib/stripe'
-import { userClient } from '../../lib/supabase-server'
+import { userClient } from '../../lib/db'
+import { currentUser } from '../../lib/auth'
 
 // The self-serve funnel's server actions. Each step re-validates its
 // prerequisites server-side — the pages' redirects are UX, these are the gates.
@@ -31,9 +32,7 @@ export async function createOrgAction(
   if (name.length > 80) return { error: 'Keep the name under 80 characters.' }
 
   const db = await userClient()
-  const {
-    data: { user },
-  } = await db.auth.getUser()
+  const user = await currentUser()
   if (!user) redirect('/signup')
 
   // One org per user in self-serve; a second visit just continues the flow.

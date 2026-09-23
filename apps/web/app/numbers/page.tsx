@@ -1,6 +1,6 @@
 import { NumbersTable, type NumberRow, type NumbersAgent } from '../../components/numbers-table'
 import { activeOrg } from '../../lib/org'
-import { userClient } from '../../lib/supabase-server'
+import { userClient } from '../../lib/db'
 
 export const dynamic = 'force-dynamic'
 

@@ -1,7 +1,7 @@
 'use server'
 
 import { randomBytes } from 'node:crypto'
-import { getEnv, type SupabaseClient } from '@voiceflow/db'
+import { getEnv, type Db } from '@voiceflow/db'
 import type { AgentConfig } from '@voiceflow/engine'
 import {
   applySuggestionToPrompt,
@@ -25,7 +25,8 @@ import { appUrl } from '../../lib/email'
 import { makeEngine } from '../../lib/engine'
 import { generateAgentDraft } from '../../lib/generate-agent'
 import { activeOrg, type ActiveOrg } from '../../lib/org'
-import { userClient } from '../../lib/supabase-server'
+import { userClient } from '../../lib/db'
+import { currentUser } from '../../lib/auth'
 
 // Phase 4: all DB access here goes through the RLS-scoped user client, so a
 // member can only ever touch their own org's rows — no manual org checks.
@@ -37,17 +38,15 @@ async function requireOrg(): Promise<ActiveOrg> {
 }
 
 /** updated_by (Phase 10): the signed-in user's email, set on every mutation. */
-async function currentUserEmail(db: SupabaseClient): Promise<string> {
-  const {
-    data: { user },
-  } = await db.auth.getUser()
+async function currentUserEmail(): Promise<string> {
+  const user = await currentUser()
   return user?.email ?? 'system'
 }
 
 // Rule 4: every save appends a version row; version numbers are per-agent.
 // ponytail: read-max+1 has a race under concurrent saves — the unique(agent_id,
 // version) constraint turns that into an error instead of silent corruption.
-async function insertVersion(db: SupabaseClient, agentId: string, config: StoredAgentConfig) {
+async function insertVersion(db: Db, agentId: string, config: StoredAgentConfig) {
   const { data } = await db
     .from('agent_config_versions')
     .select('version')
@@ -63,7 +62,7 @@ async function insertVersion(db: SupabaseClient, agentId: string, config: Stored
   return version
 }
 
-async function getAgentRow(db: SupabaseClient, id: string) {
+async function getAgentRow(db: Db, id: string) {
   const { data, error } = await db.from('agents').select('*').eq('id', id).single()
   if (error) throw new Error(error.message)
   return data
@@ -79,7 +78,7 @@ function validConfig(c: AgentConfig | undefined): c is AgentConfig {
  * agentConfig never carries provider ids, so a fresh provider agent is minted.
  */
 async function createStoredAgent(
-  db: SupabaseClient,
+  db: Db,
   org: ActiveOrg,
   stored: StoredAgentConfig,
   email: string
@@ -136,7 +135,7 @@ export async function createAgentAction(input: {
   let id: string
   try {
     const org = await requireOrg()
-    const email = await currentUserEmail(db)
+    const email = await currentUserEmail()
     const stored: StoredAgentConfig = {
       agentType: input.agentType,
       template: input.template,
@@ -179,7 +178,7 @@ export async function updateAgentAction(
 ) {
   const db = await userClient()
   try {
-    const email = await currentUserEmail(db)
+    const email = await currentUserEmail()
     const agent = await getAgentRow(db, agentId)
     const stored = normalizeStoredConfig(agent.config)
     const agentConfig: AgentConfig = {
@@ -227,7 +226,7 @@ export async function updateAgentAction(
 /** Re-applies an old version via the adapter and appends it as the newest version. */
 export async function rollbackAgentAction(agentId: string, version: number) {
   const db = await userClient()
-  const email = await currentUserEmail(db)
+  const email = await currentUserEmail()
   const agent = await getAgentRow(db, agentId)
   const { data: old, error } = await db
     .from('agent_config_versions')
@@ -261,7 +260,7 @@ export async function rollbackAgentAction(agentId: string, version: number) {
 export async function convertToFlowAction(agentId: string) {
   const db = await userClient()
   try {
-    const email = await currentUserEmail(db)
+    const email = await currentUserEmail()
     const agent = await getAgentRow(db, agentId)
     const stored = normalizeStoredConfig(agent.config)
     if (stored.agentType !== 'single') throw new Error('Only single-prompt agents can be converted to a flow')
@@ -292,7 +291,7 @@ export async function duplicateAgentAction(agentId: string) {
   const db = await userClient()
   try {
     const org = await requireOrg()
-    const email = await currentUserEmail(db)
+    const email = await currentUserEmail()
     const agent = await getAgentRow(db, agentId)
     const stored = normalizeStoredConfig(agent.config)
     const copy: StoredAgentConfig = {
@@ -381,7 +380,7 @@ export async function applySuggestionsAction(agentId: string, formData: FormData
   const db = await userClient()
   const org = await requireOrg()
   if (!org.plan.adaptiveEnabled) throw new Error('Adaptive learning requires the Pro plan')
-  const email = await currentUserEmail(db)
+  const email = await currentUserEmail()
   const ids = (formData.getAll('id') as string[]).filter(Boolean)
   if (!ids.length) throw new Error('No suggestions selected')
   // The single-card FAQ form lets the owner edit the drafted answer before applying.
@@ -462,7 +461,7 @@ export async function setAgentBookingAction(agentId: string, enabled: boolean) {
   const db = await userClient()
   try {
     const org = await requireOrg()
-    const email = await currentUserEmail(db)
+    const email = await currentUserEmail()
     const env = getEnv()
     if (!env.APP_URL || !env.AGENT_TOOLS_SECRET) {
       throw new Error('APP_URL and AGENT_TOOLS_SECRET must be configured for agent tools')
@@ -521,7 +520,7 @@ export async function updateCustomLlmAction(
 ) {
   const db = await userClient()
   try {
-    const email = await currentUserEmail(db)
+    const email = await currentUserEmail()
     const agent = await getAgentRow(db, agentId)
     const stored = normalizeStoredConfig(agent.config)
     const url = input.url.trim()
@@ -606,7 +605,7 @@ export async function saveTestCaseAction(
   const db = await userClient()
   try {
     const org = await requireOrg()
-    const email = await currentUserEmail(db)
+    const email = await currentUserEmail()
     const name = input.name.trim()
     const userPrompt = input.userPrompt.trim()
     if (!name || !userPrompt) throw new Error('Name and user prompt are required')

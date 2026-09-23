@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react'
-import { getEnv, type SupabaseClient } from '@voiceflow/db'
+import { getEnv, pool } from '@voiceflow/db'
 
 // Resend's sandbox sender — works without domain verification, dev only.
 const FROM_FALLBACK = 'VoiceFlow <onboarding@resend.dev>'
@@ -29,18 +29,12 @@ export async function sendEmail(to: string[], subject: string, react: ReactEleme
   return true
 }
 
-/** Email addresses of an org's owners. db must be the service client (auth.admin). */
-export async function orgOwnerEmails(db: SupabaseClient, orgId: string): Promise<string[]> {
-  const { data: owners, error } = await db
-    .from('org_members')
-    .select('user_id')
-    .eq('org_id', orgId)
-    .eq('role', 'owner')
-  if (error) throw new Error(error.message)
-  const emails: string[] = []
-  for (const o of owners ?? []) {
-    const { data } = await db.auth.admin.getUserById(o.user_id)
-    if (data?.user?.email) emails.push(data.user.email)
-  }
-  return emails
+/** Email addresses of an org's owners. auth.users is off PostgREST, so direct SQL. */
+export async function orgOwnerEmails(orgId: string): Promise<string[]> {
+  const { rows } = await pool().query<{ email: string }>(
+    `select u.email from public.org_members m join auth.users u on u.id = m.user_id
+     where m.org_id = $1 and m.role = 'owner'`,
+    [orgId]
+  )
+  return rows.map((r) => r.email)
 }

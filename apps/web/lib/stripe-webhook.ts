@@ -1,11 +1,11 @@
 import type Stripe from 'stripe'
-import type { SupabaseClient } from '@voiceflow/db'
+import type { Db } from '@voiceflow/db'
 import type { VoiceEngine } from '@voiceflow/engine'
 import { emit } from './events'
 import { currentPeriodUsage, resumeOrgAgents } from './usage'
 
 export interface StripeWebhookDeps {
-  db: SupabaseClient
+  db: Db
   stripe: Stripe
   engine: VoiceEngine
   webhookSecret: string

@@ -1,5 +1,6 @@
 import { serviceClient } from '@voiceflow/db'
 import { makeEngine } from '../engine'
+import { recordingStore } from '../object-store'
 import { inngest } from '../inngest'
 import { archiveCallRecording, sweepExpiredRecordings } from '../recordings'
 
@@ -30,7 +31,7 @@ const deadLetter = async ({ error, event }: { error: Error; event: { name: strin
  */
 const archiveRecording = inngest.createFunction(
   { id: 'archive-recording', retries: 3, onFailure: deadLetter, triggers: [{ event: 'call/recorded' }] },
-  ({ event }) => archiveCallRecording(serviceClient(), makeEngine(), event.data.providerCallId as string)
+  ({ event }) => archiveCallRecording(serviceClient(), recordingStore(), makeEngine(), event.data.providerCallId as string)
 )
 
 // One batch is one storage delete call plus one UPDATE; 20 of them is 10k
@@ -53,10 +54,13 @@ const recordingRetentionSweep = inngest.createFunction(
     triggers: [{ cron: 'TZ=UTC 0 4 * * *' }],
   },
   async ({ step }) => {
+    const store = recordingStore()
+    // No bucket configured → nothing was ever archived, so nothing can be due.
+    if (!store) return { deleted: 0, mbFreed: 0, skipped: 'no recording bucket configured' }
     let deleted = 0
     let bytes = 0
     for (let i = 0; i < MAX_BATCHES; i++) {
-      const res = await step.run(`sweep-${i}`, () => sweepExpiredRecordings(serviceClient(), new Date(), SWEEP_BATCH))
+      const res = await step.run(`sweep-${i}`, () => sweepExpiredRecordings(serviceClient(), store, new Date(), SWEEP_BATCH))
       deleted += res.deleted
       bytes += res.bytes
       if (res.deleted < SWEEP_BATCH) return { deleted, mbFreed: round(bytes) }

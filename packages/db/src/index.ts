@@ -1,4 +1,3 @@
 export { getEnv, type Env } from './env'
-export { serviceClient } from './client'
+export { serviceClient, userDb, createDb, signPostgrestJwt, pool, ensureAuthUser, type Db } from './client'
 export { seal, open, secretEquals } from './crypto'
-export type { SupabaseClient } from '@supabase/supabase-js'

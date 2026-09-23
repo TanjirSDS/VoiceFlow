@@ -1,4 +1,4 @@
-import type { SupabaseClient } from '@voiceflow/db'
+import type { Db } from '@voiceflow/db'
 import { externalNumber } from './opt-out'
 
 // Phase 14: a contact is one row per (org, phone number). The post-call webhook
@@ -9,7 +9,7 @@ import { externalNumber } from './opt-out'
 /** Idempotent: insert on conflict do nothing, then read the id back. db must be
  *  the service client (called from webhook/cron/scripts, RLS-bypassed). */
 export async function upsertContact(
-  db: SupabaseClient,
+  db: Db,
   orgId: string,
   e164: string
 ): Promise<string | null> {
@@ -37,7 +37,7 @@ export async function upsertContact(
  * batch by (org,number) if a backfill of millions of rows ever gets slow.
  */
 export async function backfillOrgContacts(
-  db: SupabaseClient,
+  db: Db,
   orgId?: string
 ): Promise<{ linked: number }> {
   let linked = 0

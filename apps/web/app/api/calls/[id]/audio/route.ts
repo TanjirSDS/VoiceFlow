@@ -1,8 +1,8 @@
 import type { NextRequest } from 'next/server'
-import { serviceClient } from '@voiceflow/db'
 import { makeEngine } from '../../../../../lib/engine'
+import { recordingStore } from '../../../../../lib/object-store'
 import { resolveRecording, SIGNED_URL_TTL_SECS } from '../../../../../lib/recordings'
-import { userClient } from '../../../../../lib/supabase-server'
+import { userClient } from '../../../../../lib/db'
 
 export const dynamic = 'force-dynamic'
 
@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic'
 // Another org's call id 404s here and never reaches the signing step.
 export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params
-  const found = await resolveRecording(await userClient(), serviceClient(), id)
+  const found = await resolveRecording(await userClient(), recordingStore(), id)
 
   switch (found.kind) {
     // Does not exist, or is not yours. Deliberately the same answer for both.

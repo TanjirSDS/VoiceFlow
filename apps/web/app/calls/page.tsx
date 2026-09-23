@@ -7,7 +7,7 @@ import { Select } from '../../components/ui/select'
 import { fetchCallDetail } from '../../lib/call-detail-data'
 import { applyCallFilters, parseCallFilters } from '../../lib/call-filters'
 import { OUTCOMES } from '../../lib/outcome'
-import { userClient } from '../../lib/supabase-server'
+import { userClient } from '../../lib/db'
 
 export const dynamic = 'force-dynamic'
 

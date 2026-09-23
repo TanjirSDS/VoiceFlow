@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react'
-import type { SupabaseClient } from '@voiceflow/db'
+import type { Db } from '@voiceflow/db'
 import { ConcurrencyMeter } from '../../components/concurrency-meter'
 import { DashboardCharts, type DayPoint, type WeekPoint } from '../../components/dashboard-charts'
 import { ClockIcon, GaugeIcon, PhoneIcon, TimerIcon } from '../../components/icons'
-import { userClient } from '../../lib/supabase-server'
+import { userClient } from '../../lib/db'
 import { Card } from '../../components/ui/card'
 import { formatDuration } from '../../lib/call-filters'
 import { peakConcurrency } from '../../lib/concurrency-math'
@@ -22,7 +22,7 @@ interface CallRow {
 }
 
 // The one dashboard query — RLS on the user client scopes it to the member's org.
-async function fetchRecentCalls(db: SupabaseClient): Promise<CallRow[]> {
+async function fetchRecentCalls(db: Db): Promise<CallRow[]> {
   const since = new Date()
   since.setUTCDate(since.getUTCDate() - WEEKS * 7)
   since.setUTCHours(0, 0, 0, 0)

@@ -1,12 +1,12 @@
 import type Stripe from 'stripe'
-import type { SupabaseClient } from '@voiceflow/db'
+import type { Db } from '@voiceflow/db'
 import type { VoiceEngine } from '@voiceflow/engine'
 import { DUNNING_GRACE_DAYS, overageDelta, OVERAGE_METER_EVENT, planChange } from './billing-math'
 import { pauseOrgAgents } from './usage'
 
 export type BillingInterval = 'monthly' | 'annual'
 
-async function getOrg(db: SupabaseClient, orgId: string) {
+async function getOrg(db: Db, orgId: string) {
   const { data, error } = await db
     .from('orgs')
     .select('id, name, plan_id, overage_policy, stripe_customer_id, stripe_subscription_id')
@@ -16,7 +16,7 @@ async function getOrg(db: SupabaseClient, orgId: string) {
   return data
 }
 
-async function getPlan(db: SupabaseClient, planId: string) {
+async function getPlan(db: Db, planId: string) {
   const { data, error } = await db
     .from('plans')
     .select('id, name, price_cents, included_minutes, stripe_price_monthly_id, stripe_price_annual_id, stripe_overage_price_id')
@@ -33,7 +33,7 @@ function planPrice(plan: Awaited<ReturnType<typeof getPlan>>, interval: BillingI
 }
 
 async function ensureCustomer(
-  db: SupabaseClient,
+  db: Db,
   stripe: Stripe,
   org: { id: string; name: string; stripe_customer_id: string | null }
 ): Promise<string> {
@@ -46,7 +46,7 @@ async function ensureCustomer(
 /** First subscription for an org goes through Checkout. Returns the session URL.
  *  paths override where Stripe sends the customer back (signup flow vs billing page). */
 export async function startCheckout(
-  db: SupabaseClient,
+  db: Db,
   stripe: Stripe,
   orgId: string,
   planId: string,
@@ -93,7 +93,7 @@ export interface InvoiceRow {
  *  pagination via starting_after (rule 6: Stripe list semantics). Empty when the
  *  org has no Stripe customer yet (pre-subscription). Owner-gate at the caller. */
 export async function listInvoices(
-  db: SupabaseClient,
+  db: Db,
   stripe: Stripe,
   orgId: string,
   opts?: { limit?: number; startingAfter?: string }
@@ -119,7 +119,7 @@ export async function listInvoices(
 }
 
 /** Customer portal: cards, invoices, cancel. */
-export async function portalUrl(db: SupabaseClient, stripe: Stripe, orgId: string, origin: string): Promise<string> {
+export async function portalUrl(db: Db, stripe: Stripe, orgId: string, origin: string): Promise<string> {
   const org = await getOrg(db, orgId)
   if (!org.stripe_customer_id) throw new Error('no billing account yet — pick a plan first')
   const session = await stripe.billingPortal.sessions.create({
@@ -137,7 +137,7 @@ export async function portalUrl(db: SupabaseClient, stripe: Stripe, orgId: strin
  * the subscription was changed in place.
  */
 export async function changePlan(
-  db: SupabaseClient,
+  db: Db,
   stripe: Stripe,
   orgId: string,
   newPlanId: string,
@@ -194,7 +194,7 @@ export async function changePlan(
  * each overage org's unreported whole minutes to the Stripe meter. The event
  * identifier makes a re-run of the same day a no-op on Stripe's side.
  */
-export async function reportOverageDaily(db: SupabaseClient, stripe: Stripe, now = new Date()): Promise<number> {
+export async function reportOverageDaily(db: Db, stripe: Stripe, now = new Date()): Promise<number> {
   const period = now.toISOString().slice(0, 8) + '01'
   const day = now.toISOString().slice(0, 10)
   const { data: orgs, error } = await db
@@ -234,7 +234,7 @@ export async function reportOverageDaily(db: SupabaseClient, stripe: Stripe, now
 
 /** Orgs whose overage_policy flipped to 'overage' after checkout have no
  *  metered item on the subscription yet — add it before the first report. */
-async function ensureOverageItem(db: SupabaseClient, stripe: Stripe, subscriptionId: string) {
+async function ensureOverageItem(db: Db, stripe: Stripe, subscriptionId: string) {
   const sub = await stripe.subscriptions.retrieve(subscriptionId)
   if (sub.items.data.some((i) => i.price.recurring?.usage_type === 'metered')) return
   const { data: plan } = await db
@@ -249,7 +249,7 @@ async function ensureOverageItem(db: SupabaseClient, stripe: Stripe, subscriptio
 
 /** Daily: pause agents for orgs whose payment failure outlived the grace window.
  *  pauseOrgAgents is idempotent, so re-pausing on later days is harmless. */
-export async function expireDunning(db: SupabaseClient, engine: VoiceEngine, now = new Date()): Promise<number> {
+export async function expireDunning(db: Db, engine: VoiceEngine, now = new Date()): Promise<number> {
   const cutoff = new Date(now.getTime() - DUNNING_GRACE_DAYS * 86_400_000).toISOString()
   const { data: orgs, error } = await db.from('orgs').select('id').lt('payment_failed_at', cutoff)
   if (error) throw new Error(error.message)

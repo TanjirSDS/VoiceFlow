@@ -1,4 +1,4 @@
-import type { SupabaseClient } from '@voiceflow/db'
+import type { Db } from '@voiceflow/db'
 import type { CallEvent, VoiceEngine } from '@voiceflow/engine'
 import { upsertContact } from './contacts'
 import { externalNumber, recordOptOut } from './opt-out'
@@ -12,7 +12,7 @@ export async function handleElevenLabsWebhook(
   rawBody: string,
   signature: string | null,
   engine: VoiceEngine,
-  db: SupabaseClient,
+  db: Db,
   classify?: (transcript: unknown) => Promise<CallOutcome | null>,
   /** Phase 6: hand classification to Inngest (retries/backoff). Resolves false
    *  when the event wasn't accepted so the inline `classify` fallback runs. */
