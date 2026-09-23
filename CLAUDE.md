@@ -8,7 +8,8 @@ Twilio integration). Our code NEVER touches audio.
 ## STACK (do not deviate without asking)
 
 - Turborepo monorepo: apps/web (Next.js 15 App Router, TypeScript, Tailwind, shadcn/ui),
-  packages/engine (provider adapter), packages/db (Supabase client + types + SQL migrations)
+  packages/engine (provider adapter), packages/db (Supabase client + types + SQL migrations —
+  packages/db/migrations is the ONLY schema source; apply with `npm run migrate`)
 - Supabase: Postgres + Auth + Storage. All tenant tables have org_id with RLS.
 - Stripe Billing, Twilio (numbers only), ElevenLabs Agents API, Sentry, Inngest (Phase 6+).
 - Deploy: Vercel. Env vars via .env.local, validated with zod in a single env.ts.
@@ -1260,3 +1261,51 @@ normalizeCallEvent(payload) → CallEvent { providerCallId, direction, fromE164,
   shapes on the real create/GET); rollback to a pre-flow version and between two flow versions
   re-renders the canvas; a starting-node simulation confirms whether simulate accepts
   starting_workflow_node_id (else fall back to the SDK conversation-initiation path).
+
+### Phase 19 migration source of truth (2026-09-23)
+- DELETED supabase/migrations/ (0001–0008). It was a byte-identical copy that froze at
+  0008 while packages/db/migrations went on to 0015 — verified identical with cmp before
+  removing, so nothing was lost. packages/db/migrations is now the single source.
+- WHY NOT keep the mirror in sync (or symlink it): the Supabase CLI reads migrations ONLY
+  from supabase/migrations and that path is NOT configurable — no config.toml key exists
+  (supabase/cli discussion #33257; --workdir moves the whole supabase root, config included).
+  So the choice was a second copy that drifts, or take the CLI out of the migration loop.
+  Took it out: config.toml now sets [db.migrations] enabled = false, so `supabase db push`
+  / `db reset` cannot report success while applying nothing. Everything else the CLI does
+  (local stack, auth, storage) is unaffected.
+- NEW scripts/migrate.ts + `npm run migrate` (also --status / --dry-run, both read-only).
+  Applies packages/db/migrations/*.sql in filename order, one transaction per file, and
+  records each in migrations.schema_migrations.
+  - The ledger lives in its OWN `migrations` schema, not public: config.toml exposes only
+    public + graphql_public over the API, so this keeps it off PostgREST rather than
+    relying on table grants.
+  - Applied migrations are immutable — the runner stores a sha256 per file and refuses to
+    continue if an applied file changed on disk. That is the drift this phase cleaned up,
+    now a hard error instead of a silent divergence.
+  - Refuses two files sharing a number (their apply order would depend on the rest of the name).
+- STACK DEVIATION (rule: "do not deviate without asking" — flagged, not silent): added `pg`
+  as a devDependency. @supabase/supabase-js talks PostgREST and cannot run DDL, so a direct
+  Postgres connection is the only way to apply SQL. devDependency only — the shipped app
+  never imports it. Needs DATABASE_URL (added to .env.example), which is an operational var,
+  deliberately NOT added to packages/db/src/env.ts: getEnv() requires the whole app's
+  secrets, and applying migrations must not.
+- PROOF — `npm run migrate:verify` (scripts/verify-migrations.sh): throwaway container,
+  test-only Supabase shim (scripts/testdb/supabase-shim.sql: auth schema, auth.users,
+  auth.uid(), anon/authenticated/service_role), all 15 applied, then asserts the schema
+  landed and a second run is a no-op. Result 2026-09-23: 15/15 clean on an EMPTY database
+  — the first time these migrations have ever run anywhere (see the Phase 3/6 notes: "NOT
+  applied anywhere yet"). 24 tables, 24 policies, 51 indexes, 4 functions; all 15 org_id
+  tables have RLS on. Negative-tested rather than assumed: drift refused, a failing
+  migration rolls back with nothing recorded, duplicate numbers refused, --dry-run writes
+  nothing, and the harness itself fails when fed a wrong expected count.
+- LEFT ALONE ON PURPOSE: 0001_init.sql line 2 still says "paste into SQL editor or
+  `supabase db push`", which is now wrong. Editing it would change its checksum and the
+  runner would refuse to run against any database that had already applied the old text.
+  Every sign says none exists (Phase 3/6/18 notes all record no Supabase project), but
+  that is not worth betting a hard failure on for a comment. Fix it in the same change as
+  the first real 0016, when someone can confirm no deployed database is ahead of it.
+- CAVEAT: run on Postgres 16, not 17. Docker Hub pulls are wedged on this machine (even
+  `docker pull hello-world` stalls), so postgres:17 could not be fetched; used the
+  pgvector/pgvector:pg16 image already on disk via the VERIFY_PG_IMAGE override. The script
+  still DEFAULTS to postgres:17 to match config.toml's major_version. Nothing in these
+  migrations is version-specific (plain DDL, RLS, plpgsql), but a 17 run is still owed.

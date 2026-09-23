@@ -50,11 +50,16 @@ max_client_conn = 100
 # [db.vault]
 # secret_key = "env(SECRET_VALUE)"
 
+# This project's migrations live in packages/db/migrations, not here. The CLI can
+# only read migrations from supabase/migrations and that path is not configurable
+# (supabase/cli discussion #33257), so the CLI is taken out of the loop instead of
+# being fed a second copy that drifts — which is exactly what the deleted
+# supabase/migrations mirror did (frozen at 0008 while the real set reached 0015).
+# Disabled so `supabase db push` / `db reset` cannot report success while applying
+# nothing. Apply the schema with `npm run migrate`.
 [db.migrations]
-# If disabled, migrations will be skipped during a db push or reset.
-enabled = true
-# Specifies an ordered list of schema files that describe your database.
-# Supports glob patterns relative to supabase directory: "./schemas/*.sql"
+enabled = false
+# Declarative schema files for `db diff` — a different feature, not our migrations.
 schema_paths = []
 
 [db.seed]
