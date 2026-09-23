@@ -211,6 +211,74 @@ describe.skipIf(!live)('RLS org isolation (live)', () => {
     const { data: theirs } = await clientB.from('usage_periods').select('org_id').eq('org_id', orgs[0])
     expect(theirs).toHaveLength(0)
   }, 30_000)
+
+  // ---- Phase 24: API-key scoping. A key resolves to an ORG, not a user, so it
+  // carries an org_id claim and NO sub. These prove the claim grants exactly one
+  // org and nothing else — in particular that it can never reach admin powers.
+
+  it('an API-key client (org_id claim) sees only its own org', async () => {
+    const keyA = createDb(URL!, SECRET!, { role: 'authenticated', org_id: orgs[0] })
+    const { data, error } = await keyA.from('agents').select('name, org_id')
+    expect(error).toBeNull()
+    expect(data!.length).toBeGreaterThan(0)
+    expect(data!.every((r) => r.org_id === orgs[0])).toBe(true)
+    expect(data!.some((r) => r.name === `${stamp}-agent-b`)).toBe(false)
+
+    // ...and cannot reach across even when it names the other org explicitly.
+    const { data: cross } = await keyA.from('agents').select('id').eq('org_id', orgs[1])
+    expect(cross).toHaveLength(0)
+  }, 30_000)
+
+  it('an API-key client cannot write into another org', async () => {
+    const keyA = createDb(URL!, SECRET!, { role: 'authenticated', org_id: orgs[0] })
+    const { error } = await keyA
+      .from('contacts')
+      .insert({ org_id: orgs[1], e164: '+15550000911', first_name: `${stamp}-key-intruder` })
+    expect(error).toBeTruthy()
+    const { data } = await admin.from('contacts').select('id').eq('first_name', `${stamp}-key-intruder`)
+    expect(data).toHaveLength(0)
+  }, 30_000)
+
+  it('an API key never inherits admin powers, even when its creator is an admin', async () => {
+    // Make org A's owner a platform admin. A SESSION for that user now sees
+    // every org (is_org_member ORs is_admin); the org A API KEY must not.
+    await admin.from('admin_users').insert({ user_id: users[0] })
+    try {
+      const adminSession = createDb(URL!, SECRET!, { role: 'authenticated', sub: users[0] })
+      const { data: asAdmin } = await adminSession.from('agents').select('id').eq('org_id', orgs[1])
+      expect(asAdmin!.length).toBeGreaterThan(0) // the admin path still works
+
+      const keyA = createDb(URL!, SECRET!, { role: 'authenticated', org_id: orgs[0] })
+      const { data: asKey } = await keyA.from('agents').select('id').eq('org_id', orgs[1])
+      expect(asKey).toHaveLength(0) // the key is still confined to org A
+
+      // auth.uid() is null for a key, so it matches no admin row at all.
+      const { data: adminRows } = await keyA.from('admin_users').select('user_id')
+      expect(adminRows ?? []).toHaveLength(0)
+    } finally {
+      await admin.from('admin_users').delete().eq('user_id', users[0])
+    }
+  }, 30_000)
+
+  it('api_keys rows are org-isolated and never expose the hash to a member', async () => {
+    const { data: created, error: cErr } = await admin
+      .from('api_keys')
+      .insert({ org_id: orgs[0], key_hash: `${stamp}-hash-a`, prefix: 'vf_aaaaaa', created_by: 'a@voiceflow.test' })
+      .select('id')
+      .single()
+    expect(cErr).toBeNull()
+
+    // Member of org A sees it; member of org B does not.
+    const { data: aKeys } = await clientA.from('api_keys').select('id, org_id')
+    expect(aKeys!.some((r) => r.id === created!.id)).toBe(true)
+    const { data: bKeys } = await clientB.from('api_keys').select('id').eq('id', created!.id)
+    expect(bKeys).toHaveLength(0)
+
+    // key_hash is revoked from authenticated: selecting it must error, so a
+    // compromised session cannot read back a credential digest.
+    const { error: hashErr } = await clientA.from('api_keys').select('key_hash').eq('id', created!.id)
+    expect(hashErr).toBeTruthy()
+  }, 30_000)
 })
 
 it('rls live test env', () => {

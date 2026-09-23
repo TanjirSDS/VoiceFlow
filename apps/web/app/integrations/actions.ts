@@ -4,6 +4,7 @@ import { randomBytes } from 'node:crypto'
 import { serviceClient, type Db } from '@voiceflow/db'
 import { revalidatePath } from 'next/cache'
 import { listEventTypes } from '../../lib/calcom'
+import { apiKeyInsert, generateApiKey } from '../../lib/api-keys'
 import { activeOrg, type ActiveOrg } from '../../lib/org'
 import { userClient } from '../../lib/db'
 import { currentUser } from '../../lib/auth'
@@ -145,4 +146,61 @@ export async function registerInterestAction(provider: string): Promise<{ error?
   }
   revalidatePath('/integrations')
   return {}
+}
+
+// ── Public API keys (Phase 24) ──────────────────────────────────────────────
+// Owner-gated, unlike webhook endpoints: a webhook endpoint only RECEIVES data
+// we push, while an API key reads every call in the workspace and can spend
+// money placing outbound calls. That is an owner's decision.
+
+async function requireApiPlan(): Promise<ActiveOrg> {
+  const org = await requireOwner()
+  // The page renders an upsell for lower tiers, but the action is the gate —
+  // a hand-rolled POST from a Starter workspace must not mint a key.
+  if (!org.plan.apiEnabled) throw new Error('The public API is available on the Pro plan')
+  return org
+}
+
+export async function createApiKeyAction(input: { name?: string }): Promise<{ error?: string; key?: string }> {
+  const db = await userClient()
+  try {
+    const org = await requireApiPlan()
+    const generated = generateApiKey()
+    const { error } = await db.from('api_keys').insert(
+      apiKeyInsert({
+        orgId: org.orgId,
+        name: input.name,
+        createdBy: await currentUserEmail(),
+        generated,
+      })
+    )
+    if (error) throw new Error(error.message)
+    revalidatePath('/integrations')
+    // Reveal-once: this is the only moment the key exists outside the caller's
+    // hands. Nothing persists it, and no later read can reconstruct it.
+    return { key: generated.key }
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) }
+  }
+}
+
+export async function revokeApiKeyAction(id: string): Promise<{ error?: string }> {
+  const db = await userClient()
+  try {
+    await requireApiPlan()
+    // Permanent by design: 0020 grants members UPDATE on (name, revoked_at) only
+    // and no DELETE, so a key can be retired but never rewritten or erased.
+    // RLS scopes this to the caller's org — an id from another workspace matches
+    // no row. `.is('revoked_at', null)` keeps the first revocation's timestamp.
+    const { error } = await db
+      .from('api_keys')
+      .update({ revoked_at: new Date().toISOString() })
+      .eq('id', id)
+      .is('revoked_at', null)
+    if (error) throw new Error(error.message)
+    revalidatePath('/integrations')
+    return {}
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) }
+  }
 }
