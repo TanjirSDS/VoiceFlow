@@ -8,7 +8,7 @@ export const ACTIVE_ORG_COOKIE = 'active-org'
 
 // Shared select for a membership row + its org + plan (used by activeOrg).
 const MEMBER_ORG_SELECT =
-  'org_id, role, orgs(name, minutes_cap, overage_policy, payment_failed_at, pending_plan_id, plans!orgs_plan_id_fkey(id, name, max_agents, max_numbers, kb_enabled, adaptive_enabled, qa_enabled))'
+  'org_id, role, orgs(name, minutes_cap, overage_policy, payment_failed_at, pending_plan_id, plans!orgs_plan_id_fkey(id, name, max_agents, max_numbers, max_concurrent, kb_enabled, adaptive_enabled, qa_enabled))'
 
 export interface ActiveOrg {
   orgId: string
@@ -29,6 +29,8 @@ export interface ActiveOrg {
     adaptiveEnabled: boolean
     /** Phase 16: gates /qa (reporting). Growth + Pro. */
     qaEnabled: boolean
+    /** Phase 20: simultaneous calls this org may run (architecture §8 row 6). */
+    maxConcurrent: number
   }
 }
 
@@ -45,7 +47,7 @@ export const activeOrg = cache(async (): Promise<ActiveOrg | null> => {
     const { data: org } = await db
       .from('orgs')
       .select(
-        'id, name, minutes_cap, overage_policy, payment_failed_at, pending_plan_id, plans!orgs_plan_id_fkey(id, name, max_agents, max_numbers, kb_enabled, adaptive_enabled, qa_enabled)'
+        'id, name, minutes_cap, overage_policy, payment_failed_at, pending_plan_id, plans!orgs_plan_id_fkey(id, name, max_agents, max_numbers, max_concurrent, kb_enabled, adaptive_enabled, qa_enabled)'
       )
       .order('created_at', { ascending: true })
       .limit(1)
@@ -56,6 +58,7 @@ export const activeOrg = cache(async (): Promise<ActiveOrg | null> => {
       name: string
       max_agents: number
       max_numbers: number
+      max_concurrent: number
       kb_enabled: boolean
       adaptive_enabled: boolean
       qa_enabled: boolean
@@ -76,6 +79,7 @@ export const activeOrg = cache(async (): Promise<ActiveOrg | null> => {
         kbEnabled: plan.kb_enabled,
         adaptiveEnabled: plan.adaptive_enabled,
         qaEnabled: plan.qa_enabled,
+        maxConcurrent: plan.max_concurrent,
       },
     }
   }
@@ -96,7 +100,7 @@ export const activeOrg = cache(async (): Promise<ActiveOrg | null> => {
       const { data: org } = await db
         .from('orgs')
         .select(
-          'id, name, minutes_cap, overage_policy, payment_failed_at, pending_plan_id, plans!orgs_plan_id_fkey(id, name, max_agents, max_numbers, kb_enabled, adaptive_enabled, qa_enabled)'
+          'id, name, minutes_cap, overage_policy, payment_failed_at, pending_plan_id, plans!orgs_plan_id_fkey(id, name, max_agents, max_numbers, max_concurrent, kb_enabled, adaptive_enabled, qa_enabled)'
         )
         .eq('id', viewAs)
         .maybeSingle()
@@ -106,6 +110,7 @@ export const activeOrg = cache(async (): Promise<ActiveOrg | null> => {
           name: string
           max_agents: number
           max_numbers: number
+          max_concurrent: number
           kb_enabled: boolean
           adaptive_enabled: boolean
           qa_enabled: boolean
@@ -126,6 +131,7 @@ export const activeOrg = cache(async (): Promise<ActiveOrg | null> => {
             kbEnabled: plan.kb_enabled,
             adaptiveEnabled: plan.adaptive_enabled,
             qaEnabled: plan.qa_enabled,
+            maxConcurrent: plan.max_concurrent,
           },
         }
       }
@@ -169,6 +175,7 @@ export const activeOrg = cache(async (): Promise<ActiveOrg | null> => {
       kbEnabled: org.plans.kb_enabled,
       adaptiveEnabled: org.plans.adaptive_enabled,
       qaEnabled: org.plans.qa_enabled,
+      maxConcurrent: org.plans.max_concurrent,
     },
   }
 })

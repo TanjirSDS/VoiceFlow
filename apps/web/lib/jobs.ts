@@ -30,6 +30,7 @@ import { classifyCall, deriveOutcome } from './outcome'
 import { reconcileYesterday } from './reconcile'
 import { stripeClient } from './stripe'
 import { evaluateAlert, type AlertRow } from './alerts'
+import { poolConcurrencyWatch } from './jobs/concurrency-pool'
 import { attemptDelivery } from './webhooks-out'
 
 // All async work lives here as Inngest functions: retries with backoff come
@@ -419,6 +420,7 @@ export const functions = [
   statusPoll,
   webhookDeliver,
   alertEvaluate,
+  poolConcurrencyWatch,
   welcomeEmail,
   usageWarnEmail,
   usageCappedEmail,

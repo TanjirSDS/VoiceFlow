@@ -5,6 +5,10 @@ import { z } from 'zod'
 const schema = z.object({
   ELEVENLABS_API_KEY: z.string().min(1),
   ELEVENLABS_WEBHOOK_SECRET: z.string().min(1),
+  /** Phase 20: simultaneous calls our ElevenLabs plan allows, shared by every
+   *  tenant (Pro ≈ 20, Scale ≈ 30, Business ≈ 40). Raise this the moment the
+   *  plan is upgraded — the dial guard and the 80% alert both read it. */
+  ELEVENLABS_MAX_CONCURRENCY: z.coerce.number().int().positive().default(20),
   TWILIO_ACCOUNT_SID: z.string().min(1),
   TWILIO_AUTH_TOKEN: z.string().min(1),
   SUPABASE_URL: z.string().url(),
