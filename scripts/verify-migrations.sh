@@ -125,8 +125,11 @@ else
 fi
 
 echo "==> live RLS isolation tests through PostgREST"
-if ! npx vitest run packages/db/src/rls.test.ts; then
-  echo "    FAIL rls.test.ts"
+# api-keys-db.live.test.ts belongs here too: it proves the settings UI's reads
+# and revokes are scoped to ONE org, which RLS alone does not do (it narrows to
+# every org the viewer is a member of).
+if ! npx vitest run packages/db/src/rls.test.ts apps/web/lib/api-keys-db.live.test.ts; then
+  echo "    FAIL live tests"
   fail=1
 fi
 

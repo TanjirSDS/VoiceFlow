@@ -1486,6 +1486,27 @@ normalizeCallEvent(payload) → CallEvent { providerCallId, direction, fromE164,
   placing them. The page never selects key_hash (it cannot — the column grant is revoked),
   and createApiKeyAction re-checks the plan, so the upsell card is UX and the action is the
   gate.
+- DEFECT FOUND BY THE SECURITY REVIEW, then fixed: the settings page listed api_keys and
+  revokeApiKeyAction revoked them with NO org filter, relying on RLS. RLS is the wrong
+  boundary here — is_org_member() answers "is this user a member of that org?", which spans
+  EVERY workspace they belong to, while the action had authorized exactly one (the active
+  org, where it checked owner + Pro). Since createWorkspaceAction lets anyone provision a
+  workspace they own, a plain member of someone else's workspace could put themselves in an
+  owner+Pro seat, see that workspace's keys listed on their own settings page (name, prefix,
+  the creator's email), and revoke them. Fixed by lib/api-keys-db.ts: listApiKeys/revokeApiKey
+  both take the org EXPLICITLY, and revoke returns a row count so a no-op can't report
+  success. RLS stays as defence in depth; the org filter is the actual boundary.
+  MY OWN COMMENT WAS THE TELL — it said "RLS scopes this to the caller's org", which I wrote
+  without checking. Asserting a security property in a comment is how it goes unverified.
+  Regression-tested live in apps/web/lib/api-keys-db.live.test.ts (now run by migrate:verify),
+  and negative-probed: restoring the unscoped queries fails 2 of its cases with exit 1.
+  NOTE FOR LATER — setWebhookEndpointEnabledAction and deleteWebhookEndpointAction (Phase 17,
+  same file) have the identical shape and the same exposure. NOT fixed here (out of scope);
+  they need the same `.eq('org_id', org.orgId)` treatment.
+- A structural guard (api-v1/routes.test.ts) refuses any route under app/api/v1 whose
+  handlers aren't built by withApiAuth — middleware exempts that prefix from the session
+  gate, so a route added later that forgets the wrapper would be silently public.
+  Negative-probed with an unwrapped route.
 - VERIFIED (2026-09-23): 20 migrations + 14/14 live RLS on postgres:17 + postgrest v16.3;
   9 new credential invariants asserted in migrate:verify. NEGATIVE-PROBED rather than
   assumed — granting members select(key_hash) fails both the harness check and the rls

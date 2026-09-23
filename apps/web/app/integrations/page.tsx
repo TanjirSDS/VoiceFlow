@@ -6,6 +6,7 @@ import { IntegrationsManager, type EndpointRow } from '../../components/integrat
 import { activeOrg } from '../../lib/org'
 import { cn } from '../../lib/utils'
 import { userClient } from '../../lib/db'
+import { listApiKeys } from '../../lib/api-keys-db'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,21 +20,19 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
   const { tab } = await searchParams
   const active = tab === 'available' || tab === 'api' ? tab : 'connected'
   const db = await userClient()
+  // Resolved first: the api_keys read below must be scoped to THIS workspace.
+  // RLS only narrows to orgs the viewer is a member of, which is wider.
+  const org = await activeOrg()
 
-  const [org, { data: orgRow }, { data: endpointRows }, { data: deliveries }, apiKeys] = await Promise.all([
-    activeOrg(),
+  const [{ data: orgRow }, { data: endpointRows }, { data: deliveries }, keys] = await Promise.all([
     // secret is never selected here — reveal-once at creation only.
     db.from('orgs').select('calcom_api_key, calcom_event_type_id, integration_interest').maybeSingle(),
     db.from('webhook_endpoints').select('id, url, events, enabled, created_at').order('created_at', { ascending: false }),
     db.from('webhook_deliveries').select('endpoint_id, status, created_at').order('created_at', { ascending: false }).limit(200),
-    // key_hash is not selectable by members (0020 revokes the column), so this
-    // cannot accidentally pull a digest into the page payload.
-    active === 'api'
-      ? db
-          .from('api_keys')
-          .select('id, name, prefix, last_used_at, revoked_at, created_by, created_at')
-          .order('created_at', { ascending: false })
-      : Promise.resolve({ data: [] as Record<string, any>[] }),
+    // Scoped to the active org by listApiKeys, not left to RLS. key_hash is not
+    // selectable by members (0020 revokes the column) so no digest can reach the
+    // page payload either way.
+    active === 'api' && org ? listApiKeys(db, org.orgId) : Promise.resolve([]),
   ])
 
   // Latest delivery status per endpoint → the status dot.
@@ -49,7 +48,7 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
     latestStatus: latestStatus[e.id] ?? null,
   }))
 
-  const keys: ApiKeyRow[] = (apiKeys.data ?? []).map((k: Record<string, any>) => ({
+  const apiKeys: ApiKeyRow[] = keys.map((k) => ({
     id: k.id,
     name: k.name,
     prefix: k.prefix,
@@ -87,7 +86,7 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
 
       {active === 'api' ? (
         org?.plan.apiEnabled ? (
-          <ApiKeysManager keys={keys} isOwner={org?.role === 'owner'} />
+          <ApiKeysManager keys={apiKeys} isOwner={org?.role === 'owner'} />
         ) : (
           <ApiUpsell />
         )

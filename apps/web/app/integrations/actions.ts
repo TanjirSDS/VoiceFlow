@@ -5,6 +5,7 @@ import { serviceClient, type Db } from '@voiceflow/db'
 import { revalidatePath } from 'next/cache'
 import { listEventTypes } from '../../lib/calcom'
 import { apiKeyInsert, generateApiKey } from '../../lib/api-keys'
+import { revokeApiKey } from '../../lib/api-keys-db'
 import { activeOrg, type ActiveOrg } from '../../lib/org'
 import { userClient } from '../../lib/db'
 import { currentUser } from '../../lib/auth'
@@ -187,17 +188,14 @@ export async function createApiKeyAction(input: { name?: string }): Promise<{ er
 export async function revokeApiKeyAction(id: string): Promise<{ error?: string }> {
   const db = await userClient()
   try {
-    await requireApiPlan()
+    const org = await requireApiPlan()
+    // Scoped to the org this action actually authorized. RLS would allow the
+    // update for EVERY workspace the caller is a member of, which is wider than
+    // the owner-on-Pro check above — see the comment in lib/api-keys-db.ts.
     // Permanent by design: 0020 grants members UPDATE on (name, revoked_at) only
     // and no DELETE, so a key can be retired but never rewritten or erased.
-    // RLS scopes this to the caller's org — an id from another workspace matches
-    // no row. `.is('revoked_at', null)` keeps the first revocation's timestamp.
-    const { error } = await db
-      .from('api_keys')
-      .update({ revoked_at: new Date().toISOString() })
-      .eq('id', id)
-      .is('revoked_at', null)
-    if (error) throw new Error(error.message)
+    const revoked = await revokeApiKey(db, org.orgId, id)
+    if (!revoked) throw new Error('That key is already revoked, or does not exist in this workspace')
     revalidatePath('/integrations')
     return {}
   } catch (e) {
