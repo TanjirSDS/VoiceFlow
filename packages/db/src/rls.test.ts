@@ -279,6 +279,53 @@ describe.skipIf(!live)('RLS org isolation (live)', () => {
     const { error: hashErr } = await clientA.from('api_keys').select('key_hash').eq('id', created!.id)
     expect(hashErr).toBeTruthy()
   }, 30_000)
+
+  it('a member can create and revoke a key through RLS (the settings UI path)', async () => {
+    // The column grants in 0020 could easily block the very flow they protect:
+    // a filtered UPDATE needs SELECT on the columns it filters on, and INSERT
+    // must survive the table-level SELECT revoke. Proven here, not assumed.
+    const { error: insErr } = await clientA.from('api_keys').insert({
+      org_id: orgs[0],
+      name: `${stamp}-ui`,
+      key_hash: `${stamp}-hash-ui`,
+      prefix: 'vf_uiuiui',
+      created_by: 'a@voiceflow.test',
+    })
+    expect(insErr).toBeNull()
+
+    const { data: mine } = await clientA.from('api_keys').select('id, revoked_at').eq('name', `${stamp}-ui`)
+    expect(mine).toHaveLength(1)
+    const id = mine![0].id
+
+    const { error: revErr } = await clientA
+      .from('api_keys')
+      .update({ revoked_at: new Date().toISOString() })
+      .eq('id', id)
+      .is('revoked_at', null)
+    expect(revErr).toBeNull()
+    const { data: after } = await clientA.from('api_keys').select('revoked_at').eq('id', id).single()
+    expect(after!.revoked_at).toBeTruthy()
+
+    // ...but a member may not rewrite the hash, nor delete the row.
+    const { error: rewriteErr } = await clientA
+      .from('api_keys')
+      .update({ key_hash: `${stamp}-hash-rewritten` })
+      .eq('id', id)
+    expect(rewriteErr).toBeTruthy()
+    const { error: delErr } = await clientA.from('api_keys').delete().eq('id', id)
+    expect(delErr).toBeTruthy()
+
+    // ...and cannot mint one into another org (with-check rejects).
+    const { error: crossErr } = await clientA.from('api_keys').insert({
+      org_id: orgs[1],
+      name: `${stamp}-ui-intruder`,
+      key_hash: `${stamp}-hash-intruder`,
+      prefix: 'vf_bad000',
+    })
+    expect(crossErr).toBeTruthy()
+    const { data: leaked } = await admin.from('api_keys').select('id').eq('name', `${stamp}-ui-intruder`)
+    expect(leaked).toHaveLength(0)
+  }, 30_000)
 })
 
 it('rls live test env', () => {
