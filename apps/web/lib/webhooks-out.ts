@@ -5,7 +5,7 @@
 // (lib/jobs.ts) — attemptDelivery throws to request a retry until MAX_ATTEMPTS.
 
 import { createHmac } from 'node:crypto'
-import type { SupabaseClient } from '@voiceflow/db'
+import type { Db } from '@voiceflow/db'
 
 export const OUTBOUND_SIG_HEADER = 'voiceflow-signature'
 const MAX_ATTEMPTS = 5
@@ -34,7 +34,7 @@ export interface OutboundEvent {
  * then queue each NEW delivery on Inngest. db must be the service client.
  */
 export async function enqueueWebhookEvent(
-  db: SupabaseClient,
+  db: Db,
   ev: OutboundEvent,
   // Injectable for tests; defaults to the real Inngest emit (lazy-imported so the
   // delivery unit test never has to resolve the inngest package).
@@ -72,7 +72,7 @@ export async function enqueueWebhookEvent(
  * are only used for signing — never logged.
  */
 export async function attemptDelivery(
-  db: SupabaseClient,
+  db: Db,
   deliveryId: string,
   fetchFn: typeof fetch = fetch,
   nowMs: () => number = Date.now

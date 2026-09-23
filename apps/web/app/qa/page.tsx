@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
-import type { SupabaseClient } from '@voiceflow/db'
+import type { Db } from '@voiceflow/db'
 import { QaSuccessTrend } from '../../components/qa-charts'
 import { QaDetailedCalls, type QaDetailedRow } from '../../components/qa-detailed-calls'
 import { GaugeIcon, PhoneIcon, QaIcon, SparkleIcon } from '../../components/icons'
@@ -11,7 +11,7 @@ import { Select } from '../../components/ui/select'
 import { applyCallFilters, parseCallFilters } from '../../lib/call-filters'
 import { activeOrg } from '../../lib/org'
 import { qaStats, successTrend, topQuestions, type QaCall } from '../../lib/qa-math'
-import { userClient } from '../../lib/supabase-server'
+import { userClient } from '../../lib/db'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,7 +23,7 @@ type Tab = 'overview' | 'questions' | 'calls'
 
 type CallRow = QaCall & { id: string; agent_id: string | null; direction: string | null }
 
-async function fetchQaCalls(db: SupabaseClient, filters: ReturnType<typeof parseCallFilters>): Promise<CallRow[]> {
+async function fetchQaCalls(db: Db, filters: ReturnType<typeof parseCallFilters>): Promise<CallRow[]> {
   const { data, error } = await applyCallFilters(
     db.from('calls').select('id, started_at, outcome, analysis, agent_id, direction'),
     filters
@@ -201,7 +201,7 @@ async function OverviewTab({
   to,
   configHref,
 }: {
-  db: SupabaseClient
+  db: Db
   filters: ReturnType<typeof parseCallFilters>
   from: string
   to: string
@@ -254,7 +254,7 @@ async function QuestionsTab({
   agentId,
   adaptive,
 }: {
-  db: SupabaseClient
+  db: Db
   agentId?: string
   adaptive: boolean
 }) {
@@ -336,7 +336,7 @@ async function CallsTab({
   filters,
   agentName,
 }: {
-  db: SupabaseClient
+  db: Db
   filters: ReturnType<typeof parseCallFilters>
   agentName: Map<string, string>
 }) {

@@ -24,7 +24,7 @@ export function parseCallFilters(params: Record<string, string | string[] | unde
   }
 }
 
-/** Applies filters to any supabase query builder over `calls`. */
+/** Applies filters to any PostgREST query builder over `calls`. */
 export function applyCallFilters<Q extends { eq: any; gte: any; lt: any; or: any }>(q: Q, f: CallFilters): Q {
   if (f.agent) q = q.eq('agent_id', f.agent)
   if (f.direction) q = q.eq('direction', f.direction)
@@ -44,7 +44,7 @@ export function applyCallFilters<Q extends { eq: any; gte: any; lt: any; or: any
   return q
 }
 
-/** supabase-js types the `agents(name)` join as an array without generated types; runtime is an object. */
+/** postgrest-js types the `agents(name)` join as an array without generated types; runtime is an object. */
 export function joinedAgentName(agents: unknown): string | null {
   const a = Array.isArray(agents) ? agents[0] : agents
   return (a as { name?: string } | null)?.name ?? null

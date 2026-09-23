@@ -164,7 +164,7 @@ async function emailOwners(orgId: string, subject: string, build: (orgName: stri
   const db = serviceClient()
   const { data: org } = await db.from('orgs').select('name').eq('id', orgId).maybeSingle()
   if (!org) return 'org gone'
-  const to = await orgOwnerEmails(db, orgId)
+  const to = await orgOwnerEmails(orgId)
   const sent = await sendEmail(to, subject, build(org.name))
   return sent ? `sent to ${to.length} owner(s)` : 'skipped (no RESEND_API_KEY or no owners)'
 }
@@ -242,7 +242,7 @@ const weeklySummary = inngest.createFunction(
           .slice(0, 5)
           .map((c) => c.summary as string)
 
-        const to = await orgOwnerEmails(db, org.id)
+        const to = await orgOwnerEmails(org.id)
         return sendEmail(
           to,
           'Your week on VoiceFlow',
@@ -355,7 +355,7 @@ const agentLearning = inngest.createFunction(
       if (digest.length) {
         const orgSuggestions = digest.reduce((n, d) => n + d.titles.length, 0)
         const sent = await step.run(`email-${org.id}`, async () => {
-          const to = await orgOwnerEmails(db, org.id)
+          const to = await orgOwnerEmails(org.id)
           return sendEmail(
             to,
             `Your agent learned ${orgSuggestions} new thing${orgSuggestions === 1 ? '' : 's'} this week`,

@@ -1,0 +1,28 @@
+# Local stack mirroring Railway: Postgres + PostgREST (Phase 21).
+#
+#   docker compose up -d && npm run migrate
+#
+# PostgREST keeps retrying until the first `npm run migrate` creates its
+# `authenticator` role (0000_platform.sql) — that's expected on a fresh volume.
+# The defaults below match .env.example; override via a shell env or .env.
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_PASSWORD: postgres
+    ports: ['54322:5432']
+    volumes: [pgdata:/var/lib/postgresql/data]
+
+  postgrest:
+    image: postgrest/postgrest:v16.3
+    depends_on: [postgres]
+    environment:
+      PGRST_DB_URI: postgresql://authenticator:${POSTGREST_DB_PASSWORD:-local-authenticator-password}@postgres:5432/postgres
+      PGRST_DB_SCHEMAS: public
+      PGRST_JWT_SECRET: ${POSTGREST_JWT_SECRET:-local-dev-postgrest-jwt-secret-32-chars-min}
+      PGRST_DB_MAX_ROWS: 20000
+    ports: ['54321:3000']
+    restart: unless-stopped
+
+volumes:
+  pgdata:

@@ -1,5 +1,5 @@
 -- Phase 22: recording retention — the answer to architecture §12 Q4
--- ("provider-hosted URLs vs. copying to Supabase Storage: retention control vs cost").
+-- ("provider-hosted URLs vs. copying to our own storage: retention control vs cost").
 --
 -- We copy. Provider-hosted URLs cost nothing and control nothing: we cannot say
 -- how long ElevenLabs keeps a recording, cannot delete one when a customer asks,
@@ -54,40 +54,14 @@ comment on column orgs.recording_retention_days is
   'applies to recordings archived AFTER the change; re-stamping existing rows '
   'belongs with the settings UI that edits it (neither exists yet).';
 
--- The no-policy design below is only safe while RLS is actually ON for
--- storage.objects. Supabase enables it out of the box, but "we assumed it" is
--- not a control: with RLS off, zero policies stops meaning "service role only"
--- and starts meaning "every authenticated user reads every tenant's audio". A
--- read-only assertion needs no table ownership and turns a silent assumption
--- into a migration that refuses to run.
-do $$
-begin
-  if not (select rowsecurity from pg_tables where schemaname = 'storage' and tablename = 'objects') then
-    raise exception
-      'storage.objects has RLS disabled — the call-recordings bucket would be readable by every authenticated user';
-  end if;
-end $$;
-
--- The bucket. Private: no public URL exists for an object in it, so the only way
--- to read one is a signed URL, and the only thing that mints those is the service
--- role — after an RLS-scoped ownership check. 50MiB matches
--- supabase/config.toml's file_size_limit.
-insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values (
-  'call-recordings', 'call-recordings', false, 52428800,
-  array['audio/mpeg', 'audio/mp4', 'audio/wav', 'audio/webm', 'audio/ogg']
-)
-on conflict (id) do nothing;
-
--- storage.objects has RLS enabled by Supabase and we deliberately add NO policy
--- for this bucket — the same "RLS on, zero policies = service role only" shape
--- 0004 uses for webhook_events.
+-- The bucket itself is NOT database state (Phase 21: Railway Bucket, not
+-- Supabase Storage — this migration was rewritten before any real database
+-- applied it). Railway buckets are private by construction ("public buckets are
+-- not supported"), so there is no storage.objects RLS to assert and no bucket
+-- row to insert: the only way to read an object is a presigned URL, and the
+-- only thing that mints those is lib/object-store.ts — after lib/recordings.ts
+-- has checked, under the CALLER's RLS, that the call row is theirs.
 --
--- This is the load-bearing decision, so it is worth stating plainly: a signed URL
--- BYPASSES RLS. It is a bearer token for one object, and a policy on
--- storage.objects cannot re-scope it after the fact. So a policy here would buy
--- nothing against the leak that matters (org B holding a URL to org A's audio)
--- while adding a second, weaker read path that skips our expiry check. Org
--- scoping therefore has to happen BEFORE we sign, against the calls row, under
--- the user's own RLS — that check lives in lib/recordings.ts and is what the
--- vitest pins.
+-- That ordering is the load-bearing decision: a signed URL is a bearer token for
+-- one object that nothing can re-scope after the fact, so org scoping has to
+-- happen BEFORE we sign, against the calls row. recordings.test.ts pins it.

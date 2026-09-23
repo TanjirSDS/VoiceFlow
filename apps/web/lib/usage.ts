@@ -1,4 +1,4 @@
-import type { SupabaseClient } from '@voiceflow/db'
+import type { Db } from '@voiceflow/db'
 import type { VoiceEngine } from '@voiceflow/engine'
 import { emit } from './events'
 
@@ -13,7 +13,7 @@ export function usageCrossing(prevMinutes: number, newMinutes: number, capMinute
 }
 
 /** A specific period's usage row via the service client (reconciliation). */
-export async function currentPeriodUsage(db: SupabaseClient, orgId: string, periodStart: string) {
+export async function currentPeriodUsage(db: Db, orgId: string, periodStart: string) {
   const { data } = await db
     .from('usage_periods')
     .select('minutes_used, minutes_cap, overage_minutes')
@@ -26,7 +26,7 @@ export async function currentPeriodUsage(db: SupabaseClient, orgId: string, peri
 /** Pause = stop answering: mark agents paused and detach their numbers at the
  *  provider. phone_numbers rows keep agent_id + provider_number_id so resume
  *  can re-attach. Idempotent. */
-export async function pauseOrgAgents(db: SupabaseClient, engine: VoiceEngine, orgId: string) {
+export async function pauseOrgAgents(db: Db, engine: VoiceEngine, orgId: string) {
   await db.from('agents').update({ status: 'paused' }).eq('org_id', orgId).eq('status', 'active')
   const { data: numbers } = await db
     .from('phone_numbers')
@@ -42,7 +42,7 @@ export async function pauseOrgAgents(db: SupabaseClient, engine: VoiceEngine, or
 
 /** Undo pauseOrgAgents (payment recovered, cap raised): reactivate agents and
  *  re-attach their numbers at the provider. Idempotent. */
-export async function resumeOrgAgents(db: SupabaseClient, engine: VoiceEngine, orgId: string) {
+export async function resumeOrgAgents(db: Db, engine: VoiceEngine, orgId: string) {
   await db.from('agents').update({ status: 'active' }).eq('org_id', orgId).eq('status', 'paused')
   const { data: numbers } = await db
     .from('phone_numbers')
@@ -66,7 +66,7 @@ export async function resumeOrgAgents(db: SupabaseClient, engine: VoiceEngine, o
  * per the org's overage_policy. db must be the service client.
  */
 export async function recordCallUsage(
-  db: SupabaseClient,
+  db: Db,
   engine: VoiceEngine,
   orgId: string,
   durationSecs: number

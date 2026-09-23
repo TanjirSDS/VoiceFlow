@@ -5,7 +5,8 @@ import { redirect } from 'next/navigation'
 import { clampWindow, dedupeContacts, type CallingWindow } from '../../lib/campaign-math'
 import { emit } from '../../lib/events'
 import { activeOrg } from '../../lib/org'
-import { userClient } from '../../lib/supabase-server'
+import { userClient } from '../../lib/db'
+import { currentUser } from '../../lib/auth'
 
 // All writes ride the RLS-scoped user client (Phase 4 pattern): a member can
 // only ever create/control campaigns in their own org.
@@ -58,9 +59,7 @@ export async function createCampaignAction(input: {
       for (const row of data ?? []) opted.add(row.e164)
     }
 
-    const {
-      data: { user },
-    } = await db.auth.getUser()
+    const user = await currentUser()
     const { data: campaign, error } = await db
       .from('campaigns')
       .insert({

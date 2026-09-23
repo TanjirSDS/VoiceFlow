@@ -2,14 +2,16 @@ import Link from 'next/link'
 import { MagicLinkForm } from '../../components/magic-link-form'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
 
-// Magic-link only. Login never creates users (shouldCreateUser stays false in
-// the action) — new businesses go through /signup.
+// Magic-link only. Login never creates users (the action checks the email
+// exists first) — new businesses go through /signup.
 export default async function LoginPage({
   searchParams,
 }: {
   searchParams: Promise<{ error?: string }>
 }) {
-  const { error } = await searchParams // ?error= from a failed/expired magic-link callback
+  // ?error=<CODE> from Better Auth when a link is invalid, expired or already used.
+  const { error: code } = await searchParams
+  const error = code ? 'That sign-in link is invalid or has expired — request a new one.' : undefined
   return (
     <div className="mx-auto max-w-sm">
       <Card className="p-7">

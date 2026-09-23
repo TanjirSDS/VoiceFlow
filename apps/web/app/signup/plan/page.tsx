@@ -3,7 +3,7 @@ import { signupCheckoutAction } from '../actions'
 import { SignupSteps } from '../../../components/signup-steps'
 import { annualPriceCents } from '../../../lib/billing-math'
 import { activeOrg } from '../../../lib/org'
-import { userClient } from '../../../lib/supabase-server'
+import { userClient } from '../../../lib/db'
 
 export const dynamic = 'force-dynamic'
 

@@ -5,9 +5,9 @@ import { Button } from '../../components/ui/button'
 import { Card, CardContent } from '../../components/ui/card'
 import { makeEngine } from '../../lib/engine'
 import { activeOrg } from '../../lib/org'
-import { userClient } from '../../lib/supabase-server'
+import { userClient } from '../../lib/db'
 
-export const dynamic = 'force-dynamic' // hits Supabase + the provider (attachment state)
+export const dynamic = 'force-dynamic' // hits the database + the provider (attachment state)
 
 export default async function KnowledgePage() {
   const org = await activeOrg()

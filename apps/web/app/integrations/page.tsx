@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { IntegrationsManager, type EndpointRow } from '../../components/integrations-manager'
 import { activeOrg } from '../../lib/org'
 import { cn } from '../../lib/utils'
-import { userClient } from '../../lib/supabase-server'
+import { userClient } from '../../lib/db'
 
 export const dynamic = 'force-dynamic'
 

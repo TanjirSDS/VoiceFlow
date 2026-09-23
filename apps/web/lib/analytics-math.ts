@@ -1,5 +1,5 @@
 // Phase 15 analytics + usage derivations — pure, unit-tested (CLAUDE.md rule 7).
-// No Stripe/Supabase imports. Reuses the Phase 5 money constants from billing-math
+// No Stripe/DB imports. Reuses the Phase 5 money constants from billing-math
 // so there is one source for the overage rate + included-minute rate.
 
 import { includedRateCentsPerMin, OVERAGE_CENTS_PER_MIN } from './billing-math'

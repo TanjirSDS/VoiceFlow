@@ -17,7 +17,7 @@ import 'dotenv/config'
 import { config } from 'dotenv'
 config({ path: '.env.local' })
 
-import { serviceClient, type SupabaseClient } from '@voiceflow/db'
+import { serviceClient, type Db } from '@voiceflow/db'
 import {
   DEFAULT_ANALYSIS,
   END_NODE_ID,
@@ -83,7 +83,7 @@ const DEMO_FLOW: WorkflowGraph = {
   ],
 }
 
-async function upsertAgent(db: SupabaseClient, orgId: string, stored: StoredAgentConfig) {
+async function upsertAgent(db: Db, orgId: string, stored: StoredAgentConfig) {
   const name = stored.agentConfig.name
   const { data: existing } = await db
     .from('agents')

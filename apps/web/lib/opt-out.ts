@@ -1,4 +1,4 @@
-import type { SupabaseClient } from '@voiceflow/db'
+import type { Db } from '@voiceflow/db'
 
 // Phase 7: honoring "remove me". The classifier labels the call opt_out; this
 // records the number on the org's permanent do-not-call list and pulls it out
@@ -15,7 +15,7 @@ export function externalNumber(call: {
 }
 
 /** Idempotent — safe to run on classifier retries. db must be the service client. */
-export async function recordOptOut(db: SupabaseClient, orgId: string, e164: string, source = 'call') {
+export async function recordOptOut(db: Db, orgId: string, e164: string, source = 'call') {
   const { error } = await db
     .from('opt_outs')
     .upsert({ org_id: orgId, e164, source }, { onConflict: 'org_id,e164', ignoreDuplicates: true })

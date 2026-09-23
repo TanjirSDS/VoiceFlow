@@ -1,7 +1,7 @@
 // Phase 22 acceptance: org B gets a 404 for org A's recording, and audio past
 // its retention window is really gone from the bucket.
 //
-// These run offline, against an in-memory Supabase + Storage, and they drive the
+// These run offline, against an in-memory db + bucket, and they drive the
 // REAL route handler — so the 404 asserted below is the status code a browser
 // would receive, not a stand-in for it. That matters here: the thing being
 // proven is an authorization decision, and a test that only exercised the helper
@@ -21,8 +21,8 @@ import {
   archiveCallRecording,
   isPathOwnedBy,
   recordingExpiry,
-  RECORDING_BUCKET,
   recordingObjectPath,
+  type RecordingStore,
   resolveRecording,
   SIGNED_URL_TTL_SECS,
   sweepExpiredRecordings,
@@ -30,10 +30,10 @@ import {
 
 // The route resolves its clients through these three modules. Hoisted stubs let
 // the genuine handler run unmodified.
-const stubs = vi.hoisted(() => ({ user: null as any, service: null as any, engine: null as any }))
-vi.mock('@voiceflow/db', () => ({ serviceClient: () => stubs.service }))
+const stubs = vi.hoisted(() => ({ user: null as any, service: null as any, engine: null as any, store: null as any }))
 vi.mock('./engine', () => ({ makeEngine: () => stubs.engine }))
-vi.mock('./supabase-server', () => ({ userClient: async () => stubs.user }))
+vi.mock('./db', () => ({ userClient: async () => stubs.user }))
+vi.mock('./object-store', () => ({ recordingStore: () => stubs.store }))
 
 import { GET } from '../app/api/calls/[id]/audio/route'
 
@@ -122,30 +122,23 @@ function fakeDb(store: Store, scopeOrgId?: string): any {
       select: () => selectBuilder(rowsFor(table)),
       update: (patch: any) => updateBuilder(rowsFor(table), patch),
     }),
-    storage: {
-      from: (bucket: string) => {
-        if (bucket !== RECORDING_BUCKET) throw new Error(`fake storage: unexpected bucket ${bucket}`)
-        return {
-          upload: async (path: string, body: ArrayBuffer, opts: any) => {
-            store.bucket.set(path, { bytes: body.byteLength, contentType: opts?.contentType })
-            return { data: { path }, error: null }
-          },
-          createSignedUrl: async (path: string, ttl: number) => {
-            store.signed.push(path)
-            // A signed URL for an object that is not there is an error, exactly
-            // as Supabase behaves — so a swept recording cannot be handed out.
-            if (!store.bucket.has(path)) return { data: null, error: { message: 'Object not found' } }
-            return {
-              data: { signedUrl: `https://stub.supabase.co/storage/v1/object/sign/${bucket}/${path}?exp=${ttl}` },
-              error: null,
-            }
-          },
-          remove: async (paths: string[]) => {
-            paths.forEach((p) => store.bucket.delete(p))
-            return { data: null, error: null }
-          },
-        }
-      },
+  }
+}
+
+/** The bucket. Mirrors lib/object-store.ts: signedUrl HEADs first, so a swept
+ *  object never gets a URL (presigning alone would happily sign a missing key). */
+function fakeStore(store: Store): RecordingStore {
+  return {
+    put: async (path, body, contentType) => {
+      store.bucket.set(path, { bytes: body.byteLength, contentType })
+    },
+    signedUrl: async (path, ttl) => {
+      store.signed.push(path)
+      if (!store.bucket.has(path)) return null
+      return `https://bucket.example/${path}?X-Amz-Expires=${ttl}`
+    },
+    remove: async (paths) => {
+      paths.forEach((p) => store.bucket.delete(p))
     },
   }
 }
@@ -158,6 +151,7 @@ beforeEach(() => {
   store = makeStore()
   stubs.service = fakeDb(store)
   stubs.user = fakeDb(store, ORG_A)
+  stubs.store = fakeStore(store)
   stubs.engine = {
     fetchRecording: vi.fn(async () => ({ audio: new ArrayBuffer(2048), contentType: 'audio/mpeg' })),
   }
@@ -236,7 +230,7 @@ describe('retention window', () => {
     })
     store.bucket.clear()
 
-    const res = await archiveCallRecording(stubs.service, stubs.engine as any, 'conv_a', T0)
+    const res = await archiveCallRecording(stubs.service, stubs.store, stubs.engine as any, 'conv_a', T0)
 
     expect(res).toMatchObject({ kind: 'archived', path: `${ORG_A}/${CALL_A}.mp3`, bytes: 2048 })
     expect(store.bucket.has(`${ORG_A}/${CALL_A}.mp3`)).toBe(true)
@@ -248,7 +242,7 @@ describe('retention window', () => {
     store.bucket.clear()
     store.orgs[0].recording_retention_days = 0
 
-    const res = await archiveCallRecording(stubs.service, stubs.engine as any, 'conv_a', T0)
+    const res = await archiveCallRecording(stubs.service, stubs.store, stubs.engine as any, 'conv_a', T0)
 
     expect(res).toEqual({ kind: 'skipped', reason: 'retention disabled for org' })
     expect(store.bucket.size).toBe(0)
@@ -256,7 +250,7 @@ describe('retention window', () => {
   })
 
   it('leaves audio inside its window alone', async () => {
-    const res = await sweepExpiredRecordings(stubs.service, new Date(T0.getTime() + 29 * DAY))
+    const res = await sweepExpiredRecordings(stubs.service, stubs.store, new Date(T0.getTime() + 29 * DAY))
 
     expect(res.deleted).toBe(0)
     expect(store.bucket.has(`${ORG_A}/${CALL_A}.mp3`)).toBe(true)
@@ -266,7 +260,7 @@ describe('retention window', () => {
     const path = `${ORG_A}/${CALL_A}.mp3`
     expect(store.bucket.has(path)).toBe(true)
 
-    const res = await sweepExpiredRecordings(stubs.service, new Date(T0.getTime() + 31 * DAY))
+    const res = await sweepExpiredRecordings(stubs.service, stubs.store, new Date(T0.getTime() + 31 * DAY))
 
     // The object itself, not a flag about the object.
     expect(res).toEqual({ deleted: 1, bytes: 2048 })
@@ -281,7 +275,7 @@ describe('retention window', () => {
     expect(stubs.engine.fetchRecording).not.toHaveBeenCalled()
 
     // And a replayed call/recorded must not re-upload it.
-    const replay = await archiveCallRecording(stubs.service, stubs.engine as any, 'conv_a', new Date(T0.getTime() + 32 * DAY))
+    const replay = await archiveCallRecording(stubs.service, stubs.store, stubs.engine as any, 'conv_a', new Date(T0.getTime() + 32 * DAY))
     expect(replay).toEqual({ kind: 'skipped', reason: 'already swept' })
     expect(store.bucket.size).toBe(0)
   })
@@ -300,7 +294,7 @@ describe('retention window', () => {
     store.bucket.set(bPath, { bytes: 512 })
 
     // 10 days on: B's 7-day window is up, A's 30-day one is not.
-    const res = await sweepExpiredRecordings(stubs.service, new Date(T0.getTime() + 10 * DAY))
+    const res = await sweepExpiredRecordings(stubs.service, stubs.store, new Date(T0.getTime() + 10 * DAY))
 
     expect(res).toEqual({ deleted: 1, bytes: 512 })
     expect(store.bucket.has(bPath)).toBe(false)
@@ -322,6 +316,27 @@ describe('retention window', () => {
 
     expect(res.status).toBe(410)
     expect(store.signed).toEqual([])
+  })
+})
+
+describe('no bucket configured (local dev)', () => {
+  it('skips archiving and keeps unarchived calls streaming from the provider', async () => {
+    Object.assign(store.calls[0], { recording_path: null, recording_expires_at: null })
+    store.bucket.clear()
+    stubs.store = null
+
+    const res = await archiveCallRecording(stubs.service, null, stubs.engine as any, 'conv_a', T0)
+    expect(res).toEqual({ kind: 'skipped', reason: 'no recording bucket configured' })
+    expect(stubs.engine.fetchRecording).not.toHaveBeenCalled()
+
+    expect((await audioGet(CALL_A)).status).toBe(200) // provider proxy
+  })
+
+  it('fails closed for audio the row says was archived', async () => {
+    stubs.store = null
+    const res = await audioGet(CALL_A)
+    expect(res.status).toBe(410)
+    expect(stubs.engine.fetchRecording).not.toHaveBeenCalled()
   })
 })
 
@@ -348,13 +363,13 @@ describe('path helpers', () => {
 
 describe('resolveRecording (helper-level)', () => {
   it("returns not-found for another org's call without consulting storage", async () => {
-    const out = await resolveRecording(fakeDb(store, ORG_B), stubs.service, CALL_A, T0)
+    const out = await resolveRecording(fakeDb(store, ORG_B), stubs.store, CALL_A, T0)
     expect(out).toEqual({ kind: 'not-found' })
     expect(store.signed).toEqual([])
   })
 
   it('returns a signed URL for the owning org', async () => {
-    const out = await resolveRecording(fakeDb(store, ORG_A), stubs.service, CALL_A, T0)
+    const out = await resolveRecording(fakeDb(store, ORG_A), stubs.store, CALL_A, T0)
     expect(out.kind).toBe('signed')
   })
 })
