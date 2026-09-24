@@ -105,7 +105,7 @@ export async function buyNumberAction(e164: string): Promise<{ error?: string }>
     db.from('phone_numbers').select('id', { count: 'exact', head: true }).eq('org_id', org.orgId),
     db
       .from('agents')
-      .select('id, provider_agent_id')
+      .select('id, provider, provider_agent_id')
       .eq('org_id', org.orgId)
       .order('created_at', { ascending: true })
       .limit(1)
@@ -133,7 +133,7 @@ export async function buyNumberAction(e164: string): Promise<{ error?: string }>
   // Money is now spent — if wiring the number up fails, release it so the org
   // isn't billed for a dead number (rule 3).
   try {
-    const engine = makeEngine()
+    const engine = makeEngine(agent!.provider)
     const { providerNumberId } = await engine.importNumber(bought.twilioSid, bought.e164)
     await engine.attachNumber(providerNumberId, agent!.provider_agent_id)
     const { error } = await db.from('phone_numbers').insert({

@@ -102,13 +102,16 @@ async function createStoredAgent(
   }
   const seeded: StoredAgentConfig = { ...stored, agentConfig }
 
-  const { providerAgentId } = await makeEngine().createAgent(agentConfig)
+  // Phase 26: which provider a NEW agent is born on. Existing agents keep the
+  // provider already in their row, so flipping the default never migrates them.
+  const provider = getEnv().DEFAULT_VOICE_PROVIDER
+  const { providerAgentId } = await makeEngine(provider).createAgent(agentConfig)
   const { data, error } = await db
     .from('agents')
     .insert({
       org_id: org.orgId,
       name: agentConfig.name,
-      provider: 'elevenlabs',
+      provider,
       provider_agent_id: providerAgentId,
       config: seeded,
       agent_type: seeded.agentType,
@@ -203,7 +206,7 @@ export async function updateAgentAction(
       const errs = validateWorkflow(agentConfig.workflow)
       if (errs.length) throw new Error(`Invalid flow: ${errs[0]}`)
     }
-    await makeEngine().updateAgent(agent.provider_agent_id, agentConfig)
+    await makeEngine(agent.provider).updateAgent(agent.provider_agent_id, agentConfig)
     const newStored: StoredAgentConfig = { ...stored, agentConfig }
     const { error } = await db
       .from('agents')
@@ -236,7 +239,7 @@ export async function rollbackAgentAction(agentId: string, version: number) {
     .single()
   if (error) throw new Error(error.message)
   const stored = normalizeStoredConfig(old.config)
-  await makeEngine().updateAgent(agent.provider_agent_id, stored.agentConfig)
+  await makeEngine(agent.provider).updateAgent(agent.provider_agent_id, stored.agentConfig)
   const { error: updErr } = await db
     .from('agents')
     .update({
@@ -266,7 +269,7 @@ export async function convertToFlowAction(agentId: string) {
     if (stored.agentType !== 'single') throw new Error('Only single-prompt agents can be converted to a flow')
     const workflow = wrapPromptAsFlow(stored.agentConfig.systemPrompt)
     const agentConfig: AgentConfig = { ...stored.agentConfig, firstMessage: '', workflow }
-    await makeEngine().updateAgent(agent.provider_agent_id, agentConfig)
+    await makeEngine(agent.provider).updateAgent(agent.provider_agent_id, agentConfig)
     const newStored: StoredAgentConfig = { ...stored, agentType: 'flow', agentConfig }
     const { error } = await db
       .from('agents')
@@ -324,7 +327,7 @@ export async function deleteAgentAction(agentId: string) {
     if (camp) {
       throw new Error(`Agent is used by the ${camp.status} campaign “${camp.name}”. Stop it first.`)
     }
-    const engine = makeEngine()
+    const engine = makeEngine(agent.provider)
     const { data: numbers } = await db
       .from('phone_numbers')
       .select('provider_number_id')
@@ -413,7 +416,7 @@ export async function applySuggestionsAction(agentId: string, formData: FormData
   }
 
   const agentConfig: AgentConfig = { ...stored.agentConfig, systemPrompt: prompt }
-  await makeEngine().updateAgent(agent.provider_agent_id, agentConfig)
+  await makeEngine(agent.provider).updateAgent(agent.provider_agent_id, agentConfig)
   const newStored: StoredAgentConfig = { ...stored, agentConfig }
   const { error: updErr } = await db
     .from('agents')
@@ -485,7 +488,7 @@ export async function setAgentBookingAction(agentId: string, enabled: boolean) {
       }
     }
 
-    const engine = makeEngine()
+    const engine = makeEngine(agent.provider)
     await engine.setAgentTools(
       agent.provider_agent_id,
       enabled ? [calcomBookingTool(agentId, appUrl(), env.AGENT_TOOLS_SECRET)] : []
@@ -526,7 +529,7 @@ export async function updateCustomLlmAction(
     const url = input.url.trim()
     if (!/^https:\/\//i.test(url)) throw new Error('Enter a valid https:// endpoint URL')
 
-    const engine = makeEngine()
+    const engine = makeEngine(agent.provider)
     let apiKeySecretId = stored.agentConfig.customLlm?.apiKeySecretId
     const apiKey = input.apiKey?.trim()
     if (apiKey) {
@@ -570,7 +573,7 @@ export async function setShareAction(agentId: string, enabled: boolean) {
     let token: string | null = null
     if (enabled) {
       token = agent.share_token ?? randomBytes(16).toString('hex')
-      if (agent.provider_agent_id) await makeEngine().setAgentPublic(agent.provider_agent_id, true)
+      if (agent.provider_agent_id) await makeEngine(agent.provider).setAgentPublic(agent.provider_agent_id, true)
     }
     const { error } = await db.from('agents').update({ share_token: token }).eq('id', agentId)
     if (error) throw new Error(error.message)
@@ -651,7 +654,7 @@ export async function runSimulationAction(agentId: string, id: string, startingN
       .eq('agent_id', agentId)
       .single()
     if (error) throw new Error(error.message)
-    const result = await makeEngine().simulateConversation(agent.provider_agent_id, {
+    const result = await makeEngine(agent.provider).simulateConversation(agent.provider_agent_id, {
       userPrompt: tc.user_prompt,
       criteria: tc.success_criteria || undefined,
       // Flow agents (Phase 18): start the sim at the picked node (Test-panel picker).

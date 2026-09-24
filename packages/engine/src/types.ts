@@ -108,14 +108,32 @@ export interface CallAnalysis {
   sentiment?: string
 }
 
+/**
+ * One transcript turn, provider-neutral. Every adapter projects its own turn
+ * shape onto exactly these three keys: CallPlayer renders `message` and seeks
+ * to `time_in_call_secs`, and the outcome classifier reads `role`/`message`.
+ * Provider extras (ElevenLabs per-turn metrics, Retell word timings) are dropped
+ * here on purpose — a jsonb column full of one provider's private fields is
+ * rule 1 leaking into the database by a side door.
+ */
+export interface TranscriptTurn {
+  role: string
+  message: string
+  /** Seconds from the start of the call; drives click-to-seek in the UI. */
+  time_in_call_secs: number
+}
+
 export interface CallEvent {
   providerCallId: string
+  /** The provider's agent id, so a webhook handler can find our agent row
+   *  without reading a provider-shaped payload outside the engine (rule 1). */
+  providerAgentId: string
   direction: 'inbound' | 'outbound'
   fromE164: string | null
   toE164: string | null
   startedAt: string // ISO 8601
   durationSecs: number
-  transcript: unknown // provider-normalized turn list, stored as jsonb
+  transcript: TranscriptTurn[]
   recordingUrl: string | null
   status: string
   /** Optional: rule 5 says billing truth comes from reconciliation, not webhooks. */
@@ -286,6 +304,12 @@ export interface VoiceEngine {
   /** Cheapest authenticated call — health checks. Rejects when the provider or key is bad. */
   ping(): Promise<void>
   verifyWebhook(req: WebhookRequest): boolean
+  /**
+   * Provider-specific facts about a webhook delivery that rule 2 needs: the
+   * idempotency key, and whether this is the post-call event that writes a
+   * calls row. Lives here so a route never has to open a provider payload.
+   */
+  describeWebhook(payload: unknown): { eventId: string; isPostCall: boolean }
   normalizeCallEvent(payload: unknown): CallEvent
   /**
    * Raw recording audio for a finished call, served to the UI through an app

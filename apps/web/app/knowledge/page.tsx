@@ -53,17 +53,18 @@ export default async function KnowledgePage() {
       .from('kb_documents')
       .select('id, name, source_type, created_by, created_at, provider_kb_id')
       .order('created_at', { ascending: false }),
-    db.from('agents').select('id, name, provider_agent_id').order('created_at', { ascending: true }),
+    db.from('agents').select('id, name, provider, provider_agent_id').order('created_at', { ascending: true }),
   ])
 
   // Attachment lives at the provider (not in our DB), so read it there — the
   // source of truth. Agent count is plan-capped small, so N GETs is fine.
   // ponytail: add a kb_attachments cache table if orgs ever run many agents.
-  const engine = makeEngine()
   const provisioned = (agentRows ?? []).filter((a) => a.provider_agent_id)
   const attachLists = await Promise.all(
     provisioned.map((a) =>
-      engine
+      // Phase 26: each agent's attachments live at ITS provider, so build the
+      // adapter per agent rather than asking the default one about all of them.
+      makeEngine(a.provider)
         .listKnowledge(a.provider_agent_id)
         .then((ks) => ({ agentId: a.id, ids: new Set(ks.map((k) => k.knowledgeId)) }))
         .catch(() => ({ agentId: a.id, ids: new Set<string>() }))

@@ -6,7 +6,7 @@ import { AgentKbSection, type AgentKbDoc } from '../../../components/agent-kb-se
 import { SimulationPanel, type SimTestCase } from '../../../components/simulation-panel'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../../../components/ui/accordion'
 import { includedRateCentsPerMin, OVERAGE_CENTS_PER_MIN } from '../../../lib/billing-math'
-import { makeEngine } from '../../../lib/engine'
+import { makeEngine, tryTestWidgetEmbed } from '../../../lib/engine'
 import { activeOrg } from '../../../lib/org'
 import { userClient } from '../../../lib/db'
 import type { VersionRow } from '../../../components/versions-sheet'
@@ -28,7 +28,7 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
     .eq('agent_id', id)
     .order('version', { ascending: false })
 
-  const engine = makeEngine()
+  const engine = makeEngine(agent.provider)
   const voices = await engine.listVoices().catch(() => [])
 
   const stored = normalizeStoredConfigSafe(agent.config)
@@ -175,7 +175,7 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
       agentType={agent.agent_type ?? 'single'}
       config={config}
       voices={voices}
-      embed={agent.provider_agent_id ? engine.testWidgetEmbed(agent.provider_agent_id) : null}
+      embed={agent.provider_agent_id ? tryTestWidgetEmbed(engine, agent.provider_agent_id) : null}
       shareToken={agent.share_token ?? null}
       versions={versionRows}
       rate={rate}

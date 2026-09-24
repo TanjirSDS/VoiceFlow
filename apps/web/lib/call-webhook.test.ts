@@ -2,7 +2,7 @@ import { createHmac } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import { ElevenLabsEngine } from '@voiceflow/engine'
 import fixture from '../../../packages/engine/fixtures/post-call-transcription.json'
-import { handleElevenLabsWebhook } from './elevenlabs-webhook'
+import { handleCallWebhook } from './call-webhook'
 
 const SECRET = 'whsec_test'
 
@@ -121,7 +121,7 @@ describe('elevenlabs webhook handler', () => {
 
   it('rejects a bad signature and stores nothing', async () => {
     const db = fakeDb()
-    const res = await handleElevenLabsWebhook(body, 't=1,v0=bad', engine, db)
+    const res = await handleCallWebhook('elevenlabs', body, 't=1,v0=bad', engine, db)
     expect(res.status).toBe(401)
     expect(db.tables.webhook_events).toHaveLength(0)
   })
@@ -130,8 +130,8 @@ describe('elevenlabs webhook handler', () => {
     const db = fakeDb()
     const sig = sign(body)
 
-    const first = await handleElevenLabsWebhook(body, sig, engine, db)
-    const second = await handleElevenLabsWebhook(body, sig, engine, db)
+    const first = await handleCallWebhook('elevenlabs', body, sig, engine, db)
+    const second = await handleCallWebhook('elevenlabs', body, sig, engine, db)
 
     expect(first.status).toBe(200)
     expect(second.status).toBe(200)
@@ -154,8 +154,8 @@ describe('elevenlabs webhook handler', () => {
     })
     const sig = sign(body)
 
-    await handleElevenLabsWebhook(body, sig, engine, db)
-    await handleElevenLabsWebhook(body, sig, engine, db) // replay → duplicate ignored
+    await handleCallWebhook('elevenlabs', body, sig, engine, db)
+    await handleCallWebhook('elevenlabs', body, sig, engine, db) // replay → duplicate ignored
 
     expect(db.tables.contacts).toHaveLength(1)
     // fixture is inbound, so the external (customer) number is from_e164.
@@ -168,7 +168,7 @@ describe('elevenlabs webhook handler', () => {
     const sig = sign(body)
 
     // no agents row → no org to bill
-    await handleElevenLabsWebhook(body, sig, engine, db)
+    await handleCallWebhook('elevenlabs', body, sig, engine, db)
     expect(db.rpcCalls).toHaveLength(0)
 
     // with an org-owned agent: first delivery records 42s exactly once
@@ -178,8 +178,8 @@ describe('elevenlabs webhook handler', () => {
       org_id: 'org_1',
       provider_agent_id: 'agent_placeholder0000000000000000',
     })
-    await handleElevenLabsWebhook(body, sig, engine, db2)
-    await handleElevenLabsWebhook(body, sig, engine, db2) // replay → duplicate ignored
+    await handleCallWebhook('elevenlabs', body, sig, engine, db2)
+    await handleCallWebhook('elevenlabs', body, sig, engine, db2) // replay → duplicate ignored
     expect(db2.rpcCalls).toEqual([
       { name: 'record_call_usage', args: { p_org_id: 'org_1', p_secs: 42 } },
     ])
@@ -192,13 +192,13 @@ describe('elevenlabs webhook handler', () => {
       provider_call_id: 'conv_placeholder00000000000000000',
       booking_ref: 'bk_uid_1',
     })
-    await handleElevenLabsWebhook(body, sign(body), engine, db)
+    await handleCallWebhook('elevenlabs', body, sign(body), engine, db)
     expect(db.tables.calls[0].booking_ref).toBe('bk_uid_1')
   })
 
   it('maps the post-call analysis block into calls.analysis (Phase 12)', async () => {
     const db = fakeDb()
-    await handleElevenLabsWebhook(body, sign(body), engine, db)
+    await handleCallWebhook('elevenlabs', body, sign(body), engine, db)
     const analysis = db.tables.calls[0].analysis
     expect(analysis).toMatchObject({ success: true, sentiment: 'neutral' })
     expect(analysis.data).toMatchObject({ user_sentiment: 'neutral' })
@@ -211,7 +211,7 @@ describe('elevenlabs webhook handler', () => {
     const b = JSON.stringify(failed)
     const db = fakeDb()
     const classify = async () => ({ outcome: 'booked' as const, summary: 'booked a visit' })
-    await handleElevenLabsWebhook(b, sign(b), engine, db, classify)
+    await handleCallWebhook('elevenlabs', b, sign(b), engine, db, classify)
     expect(db.tables.calls[0].outcome).toBe('failed')
     expect(db.tables.calls[0].analysis.success).toBe(false)
   })
@@ -222,7 +222,7 @@ describe('elevenlabs webhook handler', () => {
     const b = JSON.stringify(bare)
     const db = fakeDb()
     const classify = async () => ({ outcome: 'question_answered' as const, summary: 'answered a question' })
-    await handleElevenLabsWebhook(b, sign(b), engine, db, classify)
+    await handleCallWebhook('elevenlabs', b, sign(b), engine, db, classify)
     expect(db.tables.calls[0].outcome).toBe('question_answered')
     expect(db.tables.calls[0].analysis).toBeNull()
   })
@@ -241,7 +241,7 @@ describe('elevenlabs webhook handler', () => {
     )
 
     const classify = async () => ({ outcome: 'opt_out' as const, summary: 'asked to be removed' })
-    await handleElevenLabsWebhook(body, sign(body), engine, db, classify)
+    await handleCallWebhook('elevenlabs', body, sign(body), engine, db, classify)
 
     expect(db.tables.opt_outs).toHaveLength(1)
     expect(db.tables.opt_outs[0]).toMatchObject({ org_id: 'org_1', e164: '+15559876543', source: 'call' })
