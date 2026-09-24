@@ -3,6 +3,8 @@
 _Status: Draft · Author: Tanjir · Date: 2026-07-12_
 _From "done-for-you agents on Retell" to a self-serve voice-agent SaaS, built solo._
 
+> **Stack update (Phase 21, 2026-09-23):** Supabase and Vercel are gone. VoiceFlow runs on Railway — Railway Postgres behind our own private PostgREST, Better Auth (magic link) for sign-in, a Railway bucket for recordings/logos. This RFC is otherwise kept as written; `CLAUDE.md` is the source of truth for the current stack.
+
 ## 1. The core idea
 
 You don't need to build a voice platform. You need to build a **control plane** on top of one.
@@ -69,7 +71,7 @@ flowchart LR
   subgraph VoiceFlow["VoiceFlow (your code)"]
     FE["Next.js dashboard\napp.voiceflow.io"]
     API["API routes / server actions"]
-    DB[("Supabase Postgres\n+ Auth + RLS")]
+    DB[("Railway Postgres + RLS\nvia private PostgREST")]
     WH["Webhook handlers"]
     ADP["Provider adapter\n(VoiceEngine interface)"]
   end
@@ -87,7 +89,7 @@ flowchart LR
   Stripe -- webhooks --> WH
 ```
 
-**Solo-dev stack:** Next.js (App Router) on Vercel · Supabase (Postgres, Auth, RLS, Storage) · Stripe Billing · ElevenLabs + Twilio SDKs · Sentry. One repo, no microservices, no queue until outbound campaigns need one (then Inngest/QStash). Keep the WordPress site as marketing at `voiceflow.io`; app lives at `app.voiceflow.io`.
+**Solo-dev stack:** Next.js (App Router) on Railway · Railway Postgres behind a private PostgREST (RLS) · Better Auth · Railway bucket for recordings · Stripe Billing · ElevenLabs + Twilio SDKs · Sentry. One repo, no microservices, no queue until outbound campaigns need one (then Inngest/QStash). Keep the WordPress site as marketing at `voiceflow.io`; app lives at `app.voiceflow.io`.
 
 **The adapter is your insurance.** Define your own interface — `createAgent()`, `updateAgent()`, `attachNumber()`, `startBatchCall()`, `normalizeCallEvent()` — and put all ElevenLabs calls behind it. Your DB stores `provider` + `provider_agent_id`, never provider-specific shapes in core tables. Swapping to Retell, or to your own Pipecat pipeline at scale, becomes a new adapter, not a rewrite.
 
@@ -108,7 +110,7 @@ campaign_contacts (id, campaign_id, e164, vars jsonb, call_id, status)
 webhook_events  (id, provider, event_id UNIQUE, payload jsonb, processed_at)  -- idempotency
 ```
 
-Postgres RLS on `org_id` gives tenant isolation for free with Supabase. Access patterns are trivial at this scale (thousands of calls/day = nothing); index `calls (org_id, started_at DESC)` and you're done for years.
+Postgres RLS on `org_id` gives baseline tenant isolation — but only down to "every workspace this user belongs to". A user in two workspaces passes RLS for both, so every action that takes an id must also filter on the active workspace's `org_id` (CLAUDE.md hard rule 8). Access patterns are trivial at this scale (thousands of calls/day = nothing); index `calls (org_id, started_at DESC)` and you're done for years.
 
 ## 7. Critical flows
 

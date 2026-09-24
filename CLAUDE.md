@@ -29,6 +29,9 @@ Twilio integration). Our code NEVER touches audio.
 6. When an external API shape is unknown, consult current docs (ElevenLabs:
    https://elevenlabs.io/docs/api-reference, Twilio, Stripe) rather than inventing it.
 7. Write a minimal test (vitest) for money math and webhook idempotency. Skip UI tests.
+8. RLS is defence in depth, not the tenant boundary for actions: is_org_member() admits
+   EVERY workspace the caller belongs to. Any statement keyed by a caller-supplied id
+   also filters on the ACTIVE org_id (or loads its parent through a helper that does).
 
 ## THE VoiceEngine INTERFACE (packages/engine/src/types.ts)
 
@@ -1502,7 +1505,8 @@ normalizeCallEvent(payload) → CallEvent { providerCallId, direction, fromE164,
   and negative-probed: restoring the unscoped queries fails 2 of its cases with exit 1.
   NOTE FOR LATER — setWebhookEndpointEnabledAction and deleteWebhookEndpointAction (Phase 17,
   same file) have the identical shape and the same exposure. NOT fixed here (out of scope);
-  they need the same `.eq('org_id', org.orgId)` treatment.
+  they need the same `.eq('org_id', org.orgId)` treatment. → RESOLVED 2026-09-24 along with
+  every other action of that shape; see "Org-scope fix" at the end of this log.
 - A structural guard (api-v1/routes.test.ts) refuses any route under app/api/v1 whose
   handlers aren't built by withApiAuth — middleware exempts that prefix from the session
   gate, so a route added later that forgets the wrapper would be silently public.
@@ -1784,3 +1788,29 @@ ever sees — rendered a broken image.
   with the rollup line; a real logo round-trip through a Railway bucket; a real vanity
   host answering (needs the CNAME + certificate, and the DNS-challenge flow that sets
   `custom_domain_verified_at` is NOT built — it is a manual platform-admin UPDATE today).
+
+### Org-scope fix — id-keyed server actions (2026-09-24)
+- The Phase 24 note undercounted it: the webhook-endpoint pair was 2 of ~25 id-keyed
+  statements in apps/web/app/*/actions.ts that relied on RLS alone. RLS admits every
+  workspace the caller belongs to (and, since 0022, every org they resell); the actions
+  gate on the ACTIVE org's role and plan. Worst cases, all reproduced live before the fix:
+  an owner of A releasing (stopping billing on, losing) a phone number in B where they are
+  only a member, or attaching B's number to A's agent; createCampaignAction accepting B's
+  agent — whose own comment said it was THE gate, because the runner dials as service
+  role; applySuggestionsAction's Pro gate and requireKb's Growth gate checked A's plan
+  and then acted on B's rows; saveTestCaseAction writing a row stamped org A pointing
+  at B's agent.
+- Fix: every such statement also filters `.eq('org_id', activeOrg)`. In agents/actions.ts
+  the choke point is getAgentRow(), which now pins the agent to the active org (and 404s
+  instead of PGRST116), and the four actions that skipped it now call it. Simple
+  toggle/delete actions return a row count and report "not found" rather than succeed
+  silently (the api-keys pattern). Also hard rule 8 above, and Prompt 0 to match.
+- Not changed: reseller administration (agency/actions.ts) is already scoped to one
+  parent; admin view-as sets the active org to the viewed one, so the filter matches.
+  lib/* job code runs as service role on ids it produced itself — out of this fix's scope.
+- VERIFIED (2026-09-24): apps/web/app/org-scope.live.test.ts runs the REAL actions on
+  postgres:17 + postgrest v16.3 (only request context, provider and Next edges stubbed)
+  for a user who owns A and is a member of B; now in migrate:verify, 51/51 exit 0.
+  MUTATION-CHECKED: with the 7 action files reverted to main, 7 of its 8 cases fail
+  (the 8th documents the RLS hazard and passes either way). 963 unit tests pass; lint
+  (provider fence intact), typecheck and build clean.

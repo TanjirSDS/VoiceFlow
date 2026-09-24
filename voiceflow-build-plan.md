@@ -2,13 +2,15 @@
 
 _Solo build. Order of principle: **prove the voice loop first, add product around it, bolt on signup last.** Auth/billing are commodity; the ElevenLabs↔Twilio integration is the risk — so it goes first._
 
-## Stack (fixed across all phases)
+> **Stack update (Phase 21, 2026-09-23):** Supabase and Vercel are gone. VoiceFlow runs on Railway — Railway Postgres behind our own private PostgREST, Better Auth (magic link) for sign-in, a Railway bucket for recordings/logos. The phase sections below are kept as originally planned; `CLAUDE.md` is the source of truth for the current stack.
+
+## Stack (current)
 
 ```
-apps/web        Next.js 15 (App Router, TS) — dashboard + API routes + webhooks → Vercel
+apps/web        Next.js 15 (App Router, TS) — dashboard + API routes + webhooks → Railway
 packages/engine Provider adapter (VoiceEngine interface, ElevenLabs impl)
-packages/db     Supabase Postgres — schema, RLS, migrations, typed client
-Infra           Supabase (DB/Auth/Storage) · Stripe · Twilio · ElevenLabs · Sentry · Inngest (from Phase 6)
+packages/db     Postgres via PostgREST + pg — schema, RLS, migrations (`npm run migrate`), typed client
+Infra           Railway (Postgres, PostgREST, bucket) · Better Auth · Stripe · Twilio · ElevenLabs · Sentry · Inngest (from Phase 6)
 ```
 
 The adapter interface everything hangs off:
