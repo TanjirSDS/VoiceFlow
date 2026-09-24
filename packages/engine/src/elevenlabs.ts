@@ -9,11 +9,27 @@ import type {
   SimulationResult,
   SimulationSpec,
   SipNumberConfig,
+  TranscriptTurn,
   Voice,
   VoiceEngine,
   WebhookRequest,
 } from './types'
 import { workflowFromProvider, workflowToProvider } from './workflow-map'
+
+/**
+ * ElevenLabs turns → neutral TranscriptTurn (Phase 26). EL already names these
+ * three keys, so this drops nothing the UI reads — it drops the provider extras
+ * (tool calls, per-turn metrics) that used to ride into the jsonb column and
+ * quietly made `calls.transcript` an ElevenLabs-shaped field.
+ */
+function toTurns(raw: unknown): TranscriptTurn[] {
+  if (!Array.isArray(raw)) return []
+  return raw.map((t: any) => ({
+    role: String(t?.role ?? ''),
+    message: String(t?.message ?? ''),
+    time_in_call_secs: Number(t?.time_in_call_secs ?? 0),
+  }))
+}
 
 /** Human name → provider identifier (data_collection key / evaluation criterion id). */
 function slugify(name: string): string {
@@ -586,6 +602,15 @@ export class ElevenLabsEngine implements VoiceEngine {
     return a.length === b.length && timingSafeEqual(a, b)
   }
 
+  describeWebhook(payload: unknown): { eventId: string; isPostCall: boolean } {
+    const p = payload as any
+    return {
+      // Phase 1: ElevenLabs webhooks carry no event id of their own.
+      eventId: `${p?.type}:${p?.data?.conversation_id ?? 'unknown'}`,
+      isPostCall: p?.type === 'post_call_transcription',
+    }
+  }
+
   /** Normalizes a post_call_transcription webhook payload. */
   normalizeCallEvent(payload: unknown): CallEvent {
     const p = payload as any
@@ -599,12 +624,13 @@ export class ElevenLabsEngine implements VoiceEngine {
     const analysis = this.normalizeAnalysis(d.analysis)
     return {
       providerCallId: d.conversation_id,
+      providerAgentId: d.agent_id ?? '',
       direction,
       fromE164: (direction === 'inbound' ? pc.external_number : pc.agent_number) ?? null,
       toE164: (direction === 'inbound' ? pc.agent_number : pc.external_number) ?? null,
       startedAt: new Date((meta.start_time_unix_secs ?? p.event_timestamp) * 1000).toISOString(),
       durationSecs: meta.call_duration_secs ?? 0,
-      transcript: d.transcript ?? [],
+      transcript: toTurns(d.transcript),
       // Recording arrives via a separate post_call_audio webhook / fetch API — Phase 3 concern.
       recordingUrl: null,
       status: d.status ?? 'done',
@@ -643,7 +669,8 @@ export class ElevenLabsEngine implements VoiceEngine {
       )
       if (Object.keys(data).length) {
         out.data = data
-        if (data.user_sentiment != null) out.sentiment = String(data.user_sentiment)
+        // Case-folded so it matches every other adapter (Phase 26 parity).
+        if (data.user_sentiment != null) out.sentiment = String(data.user_sentiment).toLowerCase()
       }
     }
 

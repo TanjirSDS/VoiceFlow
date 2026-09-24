@@ -9,6 +9,14 @@ const schema = z.object({
    *  tenant (Pro ≈ 20, Scale ≈ 30, Business ≈ 40). Raise this the moment the
    *  plan is upgraded — the dial guard and the 80% alert both read it. */
   ELEVENLABS_MAX_CONCURRENCY: z.coerce.number().int().positive().default(20),
+  /** Phase 26: the second provider (architecture §5/§10). Optional — a
+   *  deployment that never sets it simply has no Retell agents, and makeEngine
+   *  refuses rather than building an adapter with an empty key. Doubles as the
+   *  webhook signing secret: Retell signs with the API key itself. */
+  RETELL_API_KEY: z.string().min(1).optional(),
+  /** Which provider NEW agents are created on. Existing rows keep whatever is
+   *  already in agents.provider, so flipping this never touches live agents. */
+  DEFAULT_VOICE_PROVIDER: z.enum(['elevenlabs', 'retell']).default('elevenlabs'),
   TWILIO_ACCOUNT_SID: z.string().min(1),
   TWILIO_AUTH_TOKEN: z.string().min(1),
   /** Phase 23: AES-256-GCM key sealing each org's Twilio subaccount auth token

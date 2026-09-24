@@ -1,9 +1,21 @@
 import tsParser from '@typescript-eslint/parser'
 
-// CLAUDE.md rule 1 enforcement: ElevenLabs (or any provider) code must never be
-// imported outside packages/engine — everything else consumes VoiceEngine.
-const ELEVENLABS = {
-  group: ['elevenlabs', 'elevenlabs/*', '@elevenlabs/*', '**/elevenlabs', '**/elevenlabs.*'],
+// CLAUDE.md rule 1 enforcement: ElevenLabs, Retell — any provider's code must
+// never be imported outside packages/engine; everything else consumes VoiceEngine.
+// Phase 26: one list, so adding a third provider is one line and not a rediscovery
+// that the fence only ever knew about the first one.
+const PROVIDERS = {
+  group: [
+    'elevenlabs',
+    'elevenlabs/*',
+    '@elevenlabs/*',
+    '**/elevenlabs',
+    '**/elevenlabs.*',
+    'retell-sdk',
+    'retell-sdk/*',
+    '**/retell',
+    '**/retell.*',
+  ],
   message:
     'Provider code lives only inside packages/engine (CLAUDE.md rule 1). Consume the VoiceEngine interface instead.',
 }
@@ -21,15 +33,15 @@ export default [
     ignores: ['packages/engine/**'],
     languageOptions: { parser: tsParser },
     rules: {
-      'no-restricted-imports': ['error', { patterns: [ELEVENLABS, XYFLOW] }],
+      'no-restricted-imports': ['error', { patterns: [PROVIDERS, XYFLOW] }],
     },
   },
   {
     // The flow dir may import @xyflow (later object wins for these files); the
-    // elevenlabs fence still applies here.
+    // provider fence still applies here.
     files: ['apps/web/components/flow/**/*.{ts,tsx}'],
     rules: {
-      'no-restricted-imports': ['error', { patterns: [ELEVENLABS] }],
+      'no-restricted-imports': ['error', { patterns: [PROVIDERS] }],
     },
   },
 ]

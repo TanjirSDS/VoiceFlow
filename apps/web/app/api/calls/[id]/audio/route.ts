@@ -12,7 +12,8 @@ export const dynamic = 'force-dynamic'
 // Another org's call id 404s here and never reaches the signing step.
 export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params
-  const found = await resolveRecording(await userClient(), recordingStore(), id)
+  const db = await userClient()
+  const found = await resolveRecording(db, recordingStore(), id)
 
   switch (found.kind) {
     // Does not exist, or is not yours. Deliberately the same answer for both.
@@ -39,7 +40,10 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
     // which is what this route did for every call before Phase 22.
     case 'proxy':
       try {
-        const { audio, contentType } = await makeEngine().fetchRecording(found.providerCallId)
+        // Phase 26: only the provider that ran the call can serve its audio.
+        const { data: row } = await db.from('calls').select('agents(provider)').eq('id', id).maybeSingle()
+        const provider = (row?.agents as { provider?: string } | null)?.provider
+        const { audio, contentType } = await makeEngine(provider).fetchRecording(found.providerCallId)
         return new Response(audio, {
           headers: {
             'content-type': contentType,

@@ -8,7 +8,15 @@ import { recordCallUsage } from './usage'
 // Rule 2: verify signature → insert webhook_events (UNIQUE event_id, skip on
 // conflict = idempotent) → store raw payload → then process.
 // Extracted from the route so the idempotency test can inject a fake db.
-export async function handleElevenLabsWebhook(
+//
+// Phase 26: provider-neutral. It used to reach into `payload.type`,
+// `payload.data.conversation_id` and `payload.data.agent_id` directly — which
+// made this file quietly ElevenLabs-shaped in violation of rule 1. The engine
+// now answers all three questions (describeWebhook + CallEvent.providerAgentId),
+// so the same handler serves every provider's route.
+export async function handleCallWebhook(
+  /** The value stored in webhook_events.provider, and the agents.provider it came from. */
+  provider: string,
   rawBody: string,
   signature: string | null,
   engine: VoiceEngine,
@@ -26,25 +34,26 @@ export async function handleElevenLabsWebhook(
   }
 
   const payload = JSON.parse(rawBody)
-  // ElevenLabs webhooks carry no event id; type + conversation_id is unique per event kind.
-  const eventId = `${payload.type}:${payload.data?.conversation_id ?? 'unknown'}`
+  // Neither provider sends a delivery id, so each adapter mints one that is
+  // unique per (event kind, call) — the UNIQUE constraint does the rest.
+  const { eventId, isPostCall } = engine.describeWebhook(payload)
 
   const { data: inserted, error } = await db
     .from('webhook_events')
     .upsert(
-      { provider: 'elevenlabs', event_id: eventId, payload },
+      { provider, event_id: eventId, payload },
       { onConflict: 'event_id', ignoreDuplicates: true }
     )
     .select()
   if (error) return { status: 500, body: error.message }
   if (!inserted?.length) return { status: 200, body: 'duplicate ignored' }
 
-  if (payload.type === 'post_call_transcription') {
+  if (isPostCall) {
     const ev = engine.normalizeCallEvent(payload)
     const { data: agent } = await db
       .from('agents')
       .select('id, org_id')
-      .eq('provider_agent_id', payload.data.agent_id)
+      .eq('provider_agent_id', ev.providerAgentId)
       .maybeSingle()
     // Reconciliation may have inserted this call already — only count usage
     // for rows this webhook actually creates, or minutes double-count.
@@ -104,7 +113,7 @@ export async function handleElevenLabsWebhook(
 
     // Phase 17: notify the org's outbound webhook endpoints of the completed
     // call. Best-effort — never fails the webhook. The neutral CallEvent is the
-    // payload (rule 1: raw ElevenLabs payloads never leave us).
+    // payload (rule 1: a raw provider payload never leaves us).
     if (emitCallCompleted && agent?.org_id) {
       await emitCallCompleted(agent.org_id, ev).catch((e) => console.error('emitCallCompleted failed:', e))
     }

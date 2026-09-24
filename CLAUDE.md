@@ -1518,3 +1518,101 @@ normalizeCallEvent(payload) → CallEvent { providerCallId, direction, fromE164,
   (limits no-op without UPSTASH_* env); an outbound call placed through POST /api/v1/calls
   reaching ElevenLabs. Left undone on purpose: no pagination cursor (limit/offset only), no
   CORS (server-to-server), no per-key scopes — every key is full org read + dial.
+
+### Phase 26 Retell adapter — the second provider (2026-09-24)
+
+The RFC's §5 claim ("the adapter is your insurance … swapping to Retell becomes a new
+adapter, not a rewrite") and §10 ("Stay on Retell as engine — the adapter keeps this
+open") had never been tested. They are now: `packages/engine/src/retell.ts` implements
+VoiceEngine end to end, and `agents.provider` — the column that has existed since
+0001_init and only ever held 'elevenlabs' — picks the adapter. No migration.
+
+**API register (all verified 2026-09-24; primary sources only).** docs.retellai.com plus
+the generated `RetellAI/retell-typescript-sdk` (`api.md` and `src/resources/*.ts`, which
+is the SDK's own source of truth for request/response types).
+
+| Need | Retell | Note |
+|---|---|---|
+| base / auth | `https://api.retellai.com`, `Authorization: Bearer <key>` | |
+| create agent | `POST /create-retell-llm` → `llm_id`, then `POST /create-agent` | an agent is TWO objects |
+| agent CRUD | `GET/PATCH/DELETE /{get,update,delete}-agent/{agent_id}` | prompt-side writes go to `/update-retell-llm/{llm_id}` |
+| numbers | `POST /import-phone-number`, `PATCH|DELETE /{update,delete}-phone-number/{phone_number}` | keyed by E.164 — **no surrogate id** |
+| outbound / batch | `POST /v2/create-phone-call`, `POST /create-batch-call` → `batch_call_id` | |
+| reconcile | `POST /v3/list-calls` (v3, not v2) | `filter_criteria.start_timestamp` in **ms** |
+| knowledge | `POST /create-knowledge-base` (multipart), `DELETE /delete-knowledge-base/{id}` | attaches via `llm.knowledge_base_ids` |
+| voices | `GET /list-voices` → `{voice_id, voice_name, provider, preview_audio_url}` | |
+| health | `GET /get-api-key-info` | cheapest authenticated call |
+| webhook sig | `x-retell-signature: v=<unix ms>,d=<hex>` | see below |
+
+- **The signature is HMAC-SHA256 over `body + timestamp`, keyed by the API KEY.** There is
+  no separate webhook secret. Tolerance ±5 min. Read out of the SDK's
+  `src/lib/webhook_auth.ts` rather than guessed, and `retell.test.ts` drives their published
+  vector THROUGH verifyWebhook under a pinned clock — recomputing the digest beside the
+  adapter would only have proved that node:crypto works.
+- **Retell timestamps are milliseconds** (ElevenLabs' are seconds). Read as seconds, every
+  call lands in the year 57498 and still looks like a valid ISO string in the database.
+  Mutation-tested.
+- **`call_ended` is not the post-call event.** It fires at hangup with no `call_analysis`;
+  `call_analyzed` carries it. Treating `call_ended` as post-call would write the calls row
+  first and then skip the real event as a duplicate — losing analysis on every Retell call.
+
+**What parity actually forced (the point of the phase).**
+- `CallEvent.transcript` was typed `unknown` and stored ElevenLabs turns raw, and
+  `call-player.tsx` read `{role, message, time_in_call_secs}` off them — a comment there
+  even said "ElevenLabs shape". That is rule 1 leaking into the database by a side door.
+  Now `TranscriptTurn[]`, and BOTH adapters project onto it (Retell's `content` → `message`,
+  first word's `start` → `time_in_call_secs`). Provider extras are dropped on purpose.
+- `CallEvent` gained `providerAgentId`, and VoiceEngine gained `describeWebhook()`
+  (idempotency key + "is this the post-call event"). `lib/elevenlabs-webhook.ts` used to
+  read `payload.type` / `payload.data.conversation_id` / `payload.data.agent_id` itself —
+  provider shape in apps/web. It is now `lib/call-webhook.ts`, provider-neutral, and serves
+  both routes.
+- **Sentiment casing was a real defect.** Retell's enum is `Positive|Negative|Neutral|Unknown`;
+  our ElevenLabs agents seed a free-text `user_sentiment` that comes back lower-case. The
+  same call read as 'Positive' on one provider and 'positive' on the other. Both adapters
+  now case-fold. Found by the parity suite, not by review.
+- **Rule 5 held against a temptation:** Retell's `call_cost.combined_cost` really is in
+  cents (unlike ElevenLabs credits), so `costCents` was there for the taking. Still omitted —
+  billing truth is reconciliation. The parity suite asserts both providers omit it.
+- The eslint fence only ever knew the string "elevenlabs". It is now one PROVIDERS list
+  covering Retell too, and was negative-probed (a `retell` import from apps/web errors).
+
+**Capabilities Retell does NOT have — these THROW, they do not no-op.** A silent no-op
+would look like a working feature in the UI and leave nothing at the provider.
+`importNumber(twilioSid)` (Retell has no Twilio-credentials import — use importSipNumber
+over an elastic SIP trunk), `testWidgetEmbed` (its browser test is a WebRTC session needing
+a minted token, not a static tag), `setAgentPublic`, `createSecret`, `simulateConversation`
+(its testing API is stored test cases + async batch jobs), **custom-LLM agents** (the two
+providers mean different things by the name: ours is an OpenAI-compatible HTTP endpoint,
+Retell's `custom-llm` is their own WebSocket protocol at `llm_websocket_url` — mapping one
+onto the other mints an agent that can never answer), and **workflow/flow agents**
+(Phase 18 graphs → Retell conversation-flow is its own phase; createAgent refuses rather
+than half-building a flow). The agent page and the public share page degrade to "no test
+panel" via `tryTestWidgetEmbed`; they do not 500.
+
+**listCalls paginates.** It feeds reconciliation, which is the billing source of truth,
+so `/v3/list-calls` is walked with `pagination_key` (500/page) and THROWS past 200 pages
+rather than returning a truncated window — an under-count there is indistinguishable from
+a quiet day. Both of these (and the custom-LLM trap above) were caught self-reviewing the
+adapter against its ElevenLabs twin, not by the tests.
+
+**Single-provider by design, for now:** `phone_numbers` has no `provider` column and this
+phase adds no migration, so number purchase/import/release run on `DEFAULT_VOICE_PROVIDER`.
+Only *attaching* a number resolves the agent's own provider. A genuinely mixed-provider
+deployment needs `phone_numbers.provider` — that is the next migration, not this one.
+
+- VERIFIED (2026-09-24): 413 unit tests (+41: 18 parity, 23 Retell), typecheck and lint
+  clean across all 3 packages. The parity suite was **mutation-tested** — 8 deliberate
+  adapter bugs (ms-as-seconds on both timestamp paths, wrong HMAC input order, no replay
+  window, call_ended counted as post-call, duration left in ms, criteria dropped, wrong
+  transcript field, from/to swapped) each fail it; restoring returns 41/41.
+- NOT YET VERIFIED LIVE (needs a Retell account + key, which this deployment does not
+  have): a real call on a provider='retell' agent. Nothing below normalizeCallEvent has
+  ever touched the Retell API — every request shape here is doc-verified, not
+  response-verified. `fixtures/retell-call-analyzed.json` is SYNTHETIC, assembled from the
+  documented schemas, exactly like the ElevenLabs fixture beside it; replace it with a
+  captured live `call_analyzed` delivery at acceptance. Specifically unverified: the
+  two-object create dance against a live workspace, `inbound_agents`/`outbound_agents`
+  array form on update-phone-number, the `general_tools` custom-tool mapping (system params
+  are sent as `{{call_id}}`-style query params — marked VERIFY in the code), and whether
+  `/v3/list-calls` returns a bare array or `{calls: []}` (the adapter accepts both).

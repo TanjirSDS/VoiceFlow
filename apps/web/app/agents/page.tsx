@@ -12,18 +12,21 @@ export default async function AgentsPage() {
   const [{ data: agents, error }, org] = await Promise.all([
     db
       .from('agents')
-      .select('id, name, agent_type, config, updated_at, updated_by, created_at')
+      .select('id, name, agent_type, config, provider, updated_at, updated_by, created_at')
       .order('created_at', { ascending: false }),
     activeOrg(),
   ])
   if (error) throw new Error(error.message)
 
-  // Resolve voice names once per request (not per row) and attached numbers.
-  const engine = makeEngine()
-  const [voices, { data: numbers }] = await Promise.all([
-    engine.listVoices().catch(() => []),
+  // Resolve voice names once per PROVIDER per request (not per row) and attached
+  // numbers. Phase 26: a Retell voice id means nothing to ElevenLabs' catalogue,
+  // so asking one provider for every agent's voice name silently blanks the other.
+  const providers = [...new Set((agents ?? []).map((a) => a.provider ?? 'elevenlabs'))]
+  const [voiceLists, { data: numbers }] = await Promise.all([
+    Promise.all(providers.map((p) => makeEngine(p).listVoices().catch(() => []))),
     db.from('phone_numbers').select('agent_id, e164'),
   ])
+  const voices = voiceLists.flat()
   const voiceName = new Map(voices.map((v) => [v.voiceId, v.name]))
   const phoneFor = new Map((numbers ?? []).map((n) => [n.agent_id, n.e164]))
 

@@ -1,0 +1,113 @@
+{
+  "_note": "SYNTHETIC \u2014 assembled from the documented Retell V2PhoneCallResponse + CallAnalysis schemas (docs.retellai.com + retell-typescript-sdk src/resources/call.ts, fetched 2026-09-24). Mirrors post-call-transcription.json call-for-call (same numbers, same 42s, same start instant) so the parity suite compares like with like. Replace with a captured live call_analyzed webhook at Phase 26 acceptance \u2014 same standing instruction as the ElevenLabs fixture.",
+  "event": "call_analyzed",
+  "call": {
+    "call_id": "call_placeholder000000000000000000",
+    "call_type": "phone_call",
+    "agent_id": "agent_placeholder0000000000000000",
+    "agent_name": "Joe's Plumbing receptionist",
+    "agent_version": 1,
+    "call_status": "ended",
+    "direction": "inbound",
+    "from_number": "+15559876543",
+    "to_number": "+15551230000",
+    "start_timestamp": 1752300000000,
+    "end_timestamp": 1752300042000,
+    "duration_ms": 42000,
+    "disconnection_reason": "user_hangup",
+    "transcript": "Agent: Thanks for calling Joe's Plumbing, this is an AI assistant. How can I help?\nUser: Hi, my kitchen sink is leaking.\nAgent: Sorry to hear that. Can I get your name and number so we can schedule a visit?\n",
+    "transcript_object": [
+      {
+        "role": "agent",
+        "content": "Thanks for calling Joe's Plumbing, this is an AI assistant. How can I help?",
+        "words": [
+          {
+            "word": "Thanks",
+            "start": 0.0,
+            "end": 0.18
+          },
+          {
+            "word": "for",
+            "start": 0.18,
+            "end": 0.36
+          },
+          {
+            "word": "calling",
+            "start": 0.36,
+            "end": 0.54
+          }
+        ]
+      },
+      {
+        "role": "user",
+        "content": "Hi, my kitchen sink is leaking.",
+        "words": [
+          {
+            "word": "Hi,",
+            "start": 5.0,
+            "end": 5.18
+          },
+          {
+            "word": "my",
+            "start": 5.18,
+            "end": 5.36
+          },
+          {
+            "word": "kitchen",
+            "start": 5.36,
+            "end": 5.54
+          }
+        ]
+      },
+      {
+        "role": "agent",
+        "content": "Sorry to hear that. Can I get your name and number so we can schedule a visit?",
+        "words": [
+          {
+            "word": "Sorry",
+            "start": 9.0,
+            "end": 9.18
+          },
+          {
+            "word": "to",
+            "start": 9.18,
+            "end": 9.36
+          },
+          {
+            "word": "hear",
+            "start": 9.36,
+            "end": 9.54
+          }
+        ]
+      }
+    ],
+    "recording_url": "https://dxc03zgurdly9.cloudfront.net/placeholder/recording.wav",
+    "public_log_url": "https://dxc03zgurdly9.cloudfront.net/placeholder/log.txt",
+    "metadata": {},
+    "retell_llm_dynamic_variables": {},
+    "opt_out_sensitive_data_storage": false,
+    "call_analysis": {
+      "call_successful": true,
+      "call_summary": "Caller reported a leaking kitchen sink; agent collected contact details.",
+      "user_sentiment": "Neutral",
+      "in_voicemail": false,
+      "custom_analysis_data": {
+        "call_summary": "Caller reported a leaking kitchen sink; agent collected contact details.",
+        "user_sentiment": "Neutral"
+      }
+    },
+    "call_cost": {
+      "combined_cost": 31.5,
+      "total_duration_seconds": 42,
+      "total_duration_unit_price": 0.75,
+      "product_costs": [
+        {
+          "product": "elevenlabs_tts",
+          "unit_price": 0.25,
+          "cost": 10.5,
+          "is_transfer_leg_cost": false
+        }
+      ]
+    }
+  }
+}

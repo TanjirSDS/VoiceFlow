@@ -46,18 +46,20 @@ export async function assignNumberAction(
   if (!number?.provider_number_id) return { error: 'Number not found.' }
   if (number.status === 'released') return { error: 'That number was released.' }
 
-  const engine = makeEngine()
+  // Phase 26: attaching happens at the agent's provider. Detaching has no agent
+  // to ask, so it uses the deployment default — see the decisions log: numbers
+  // are single-provider until phone_numbers carries its own provider column.
   try {
     if (agentId) {
       const { data: agent } = await db
         .from('agents')
-        .select('provider_agent_id')
+        .select('provider, provider_agent_id')
         .eq('id', agentId)
         .maybeSingle()
       if (!agent?.provider_agent_id) return { error: 'Agent not found.' }
-      await engine.attachNumber(number.provider_number_id, agent.provider_agent_id)
+      await makeEngine(agent.provider).attachNumber(number.provider_number_id, agent.provider_agent_id)
     } else {
-      await engine.detachNumber(number.provider_number_id)
+      await makeEngine().detachNumber(number.provider_number_id)
     }
   } catch (e) {
     console.error('number assign failed:', e)
