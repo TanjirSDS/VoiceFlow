@@ -4,6 +4,8 @@ Copy-paste prompts for Claude Code / Cursor. Run them in order — each assumes 
 
 ---
 
+> **Stack update (Phase 21, 2026-09-23):** Supabase and Vercel are gone. VoiceFlow runs on Railway — Railway Postgres behind our own private PostgREST, Better Auth (magic link) for sign-in, a Railway bucket for recordings/logos. Prompt 0 below is kept in step with it; the phase prompts are kept as originally written; `CLAUDE.md` is the source of truth for the current stack.
+
 ## Prompt 0 — Project context (put in CLAUDE.md, not pasted per task)
 
 ```
@@ -14,11 +16,12 @@ Twilio integration). Our code NEVER touches audio.
 
 STACK (do not deviate without asking):
 - Turborepo monorepo: apps/web (Next.js 15 App Router, TypeScript, Tailwind, shadcn/ui),
-  packages/engine (provider adapter), packages/db (Supabase client + types + SQL migrations —
+  packages/engine (provider adapter), packages/db (PostgREST + pg clients + SQL migrations —
   packages/db/migrations is the ONLY schema source; apply with `npm run migrate`)
-- Supabase: Postgres + Auth + Storage. All tenant tables have org_id with RLS.
+- Postgres on Railway (NOT Supabase, since Phase 21) behind our own private PostgREST;
+  Better Auth (magic link) for auth. All tenant tables have org_id with RLS.
 - Stripe Billing, Twilio (numbers only), ElevenLabs Agents API, Sentry, Inngest (Phase 6+).
-- Deploy: Vercel. Env vars via .env.local, validated with zod in a single env.ts.
+- Deploy: Railway (railway.json). Env vars via .env.local, validated with zod in a single env.ts.
 
 HARD RULES:
 1. Provider isolation: ElevenLabs types/HTTP calls exist ONLY inside packages/engine.
@@ -33,6 +36,9 @@ HARD RULES:
 6. When an external API shape is unknown, consult current docs (ElevenLabs:
    https://elevenlabs.io/docs/api-reference, Twilio, Stripe) rather than inventing it.
 7. Write a minimal test (vitest) for money math and webhook idempotency. Skip UI tests.
+8. RLS is defence in depth, not the tenant boundary for actions: is_org_member() admits
+   EVERY workspace the caller belongs to. Any statement keyed by a caller-supplied id
+   also filters on the ACTIVE org_id (or loads its parent through a helper that does).
 
 THE VoiceEngine INTERFACE (packages/engine/src/types.ts) — implement providers against
 this, never leak past it:

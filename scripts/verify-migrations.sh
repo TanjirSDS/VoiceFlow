@@ -132,7 +132,10 @@ echo "==> live RLS isolation tests through PostgREST"
 # screen's queries are scoped to ONE parent org. RLS does not do that — since
 # 0022 it returns true for every org the caller RESELLS as well as every org
 # they are a member of, so an unscoped query would cross two agencies.
-if ! npx vitest run packages/db/src/rls.test.ts apps/web/lib/api-keys-db.live.test.ts apps/web/lib/agency-db.live.test.ts; then
+# org-scope.live.test.ts runs the real id-keyed server actions (numbers, agents,
+# campaigns, KB, alerts, contacts, webhook endpoints) for a user who owns one
+# workspace and is a plain member of another — same hazard, every action.
+if ! npx vitest run packages/db/src/rls.test.ts apps/web/lib/api-keys-db.live.test.ts apps/web/lib/agency-db.live.test.ts apps/web/app/org-scope.live.test.ts; then
   echo "    FAIL live tests"
   fail=1
 fi

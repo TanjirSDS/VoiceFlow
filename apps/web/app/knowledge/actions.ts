@@ -10,7 +10,9 @@ import { currentUser } from '../../lib/auth'
 
 // Multi-tenant fence (item 1): every read/write below goes through the RLS-scoped
 // user client, so a member only ever touches their own org's kb_documents rows —
-// the shared workspace KB is never enumerated to a user.
+// the shared workspace KB is never enumerated to a user. RLS alone admits EVERY
+// workspace the caller belongs to, while requireKb() authorized only the active
+// one (its plan), so id-keyed statements also filter on the active org_id.
 
 async function requireKb(): Promise<ActiveOrg> {
   const org = await activeOrg()
@@ -75,15 +77,16 @@ export async function createKbDocAction(formData: FormData): Promise<{ error?: s
  *  then drop our row. */
 export async function deleteKbDocAction(docId: string): Promise<{ error?: string }> {
   const db = await userClient()
-  await requireKb()
+  const org = await requireKb()
   const { data: doc } = await db
     .from('kb_documents')
     .select('provider_kb_id')
     .eq('id', docId)
+    .eq('org_id', org.orgId)
     .maybeSingle()
   if (!doc) return { error: 'Document not found.' }
   await makeEngine().removeKnowledge(doc.provider_kb_id)
-  const { error } = await db.from('kb_documents').delete().eq('id', docId)
+  const { error } = await db.from('kb_documents').delete().eq('id', docId).eq('org_id', org.orgId)
   if (error) return { error: error.message }
   revalidatePath('/knowledge')
   return {}
@@ -97,10 +100,17 @@ export async function setKbAttachmentAction(
   attached: boolean
 ): Promise<{ error?: string }> {
   const db = await userClient()
-  await requireKb()
+  const org = await requireKb()
+  // Both halves must be in the active org — otherwise one workspace's document
+  // could be attached to another workspace's agent.
   const [{ data: doc }, { data: agent }] = await Promise.all([
-    db.from('kb_documents').select('provider_kb_id, name, source_type').eq('id', docId).maybeSingle(),
-    db.from('agents').select('provider_agent_id').eq('id', agentId).maybeSingle(),
+    db
+      .from('kb_documents')
+      .select('provider_kb_id, name, source_type')
+      .eq('id', docId)
+      .eq('org_id', org.orgId)
+      .maybeSingle(),
+    db.from('agents').select('provider_agent_id').eq('id', agentId).eq('org_id', org.orgId).maybeSingle(),
   ])
   if (!doc || !agent) return { error: 'Document or agent not found.' }
   if (!agent.provider_agent_id) return { error: 'That agent is not provisioned yet.' }

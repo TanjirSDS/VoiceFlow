@@ -10,8 +10,11 @@ import { activeOrg, type ActiveOrg } from '../../lib/org'
 import { userClient } from '../../lib/db'
 
 // Rule 3: adding/removing numbers spends (or stops) money — every action is
-// owner-gated and re-checks the plan cap server-side. RLS scopes every read/write
-// to the caller's org, so cross-org ids simply miss.
+// owner-gated and re-checks the plan cap server-side. The owner gate is on the
+// ACTIVE org, but RLS admits every workspace the caller belongs to — so every
+// id-keyed statement also filters on the active org_id. Without that, an owner of
+// one workspace could release (stop billing, lose) a number in another workspace
+// where they are only a member, or attach it to an agent that isn't theirs.
 
 async function requireOwner(): Promise<ActiveOrg> {
   const org = await activeOrg()
@@ -37,11 +40,12 @@ export async function assignNumberAction(
   agentId: string | null
 ): Promise<{ error?: string }> {
   const db = await userClient()
-  await requireOwner()
+  const org = await requireOwner()
   const { data: number } = await db
     .from('phone_numbers')
     .select('provider_number_id, status')
     .eq('id', numberId)
+    .eq('org_id', org.orgId)
     .maybeSingle()
   if (!number?.provider_number_id) return { error: 'Number not found.' }
   if (number.status === 'released') return { error: 'That number was released.' }
@@ -55,6 +59,7 @@ export async function assignNumberAction(
         .from('agents')
         .select('provider, provider_agent_id')
         .eq('id', agentId)
+        .eq('org_id', org.orgId)
         .maybeSingle()
       if (!agent?.provider_agent_id) return { error: 'Agent not found.' }
       await makeEngine(agent.provider).attachNumber(number.provider_number_id, agent.provider_agent_id)
@@ -65,7 +70,11 @@ export async function assignNumberAction(
     console.error('number assign failed:', e)
     return { error: 'Could not update the assignment — try again.' }
   }
-  const { error } = await db.from('phone_numbers').update({ agent_id: agentId }).eq('id', numberId)
+  const { error } = await db
+    .from('phone_numbers')
+    .update({ agent_id: agentId })
+    .eq('id', numberId)
+    .eq('org_id', org.orgId)
   if (error) return { error: error.message }
   revalidatePath('/numbers')
   return {}
@@ -195,6 +204,7 @@ export async function releaseNumberAction(numberId: string): Promise<{ error?: s
     .from('phone_numbers')
     .select('provider_number_id, twilio_sid, twilio_account_sid, agent_id, status')
     .eq('id', numberId)
+    .eq('org_id', org.orgId)
     .maybeSingle()
   if (!number) return { error: 'Number not found.' }
   if (number.status === 'released') return {}
@@ -223,6 +233,7 @@ export async function releaseNumberAction(numberId: string): Promise<{ error?: s
     .from('phone_numbers')
     .update({ status: 'released', agent_id: null })
     .eq('id', numberId)
+    .eq('org_id', org.orgId)
   if (error) return { error: error.message }
   revalidatePath('/numbers')
   return {}
