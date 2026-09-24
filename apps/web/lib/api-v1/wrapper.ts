@@ -78,7 +78,7 @@ export function withApiAuth(handler: ApiHandler, deps: ApiDeps = realDeps) {
         auth.status,
         auth.code,
         auth.message,
-        auth.status === 401 ? { 'www-authenticate': 'Bearer realm="VoiceFlow API"' } : undefined
+        auth.status === 401 ? { 'www-authenticate': 'Bearer realm="API"' } : undefined
       )
     }
 

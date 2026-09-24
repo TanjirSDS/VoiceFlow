@@ -52,6 +52,13 @@ export interface CallInput {
   outcome: string | null
   agentName: string | null
   recordingUrl: string | null
+  /**
+   * Phase 27: what this org calls the product. Used only where a name has to
+   * appear in the CUSTOMER's own CRM — a record that outlives the session and
+   * is read by people who never see our UI, which makes it the most durable
+   * way a white-labelled deployment can leak.
+   */
+  productName: string
   /** Resolved per-org overrides: source_field → target_property. */
   mappings: FieldMappings
 }

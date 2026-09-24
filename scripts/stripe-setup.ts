@@ -15,7 +15,7 @@ config({ path: '.env.local' })
 
 import Stripe from 'stripe'
 import { getEnv, serviceClient } from '@voiceflow/db'
-import { annualPriceCents, OVERAGE_CENTS_PER_MIN, OVERAGE_METER_EVENT } from '../apps/web/lib/billing-math'
+import { AGENCY_METER_EVENT, annualPriceCents, OVERAGE_CENTS_PER_MIN, OVERAGE_METER_EVENT } from '../apps/web/lib/billing-math'
 
 async function ensureProduct(stripe: Stripe, existing: Stripe.Product[], key: string, name: string) {
   const found = existing.find((p) => p.metadata.plan_id === key)
@@ -53,7 +53,7 @@ async function main() {
   const stripe = new Stripe(getEnv().STRIPE_SECRET_KEY)
   const db = serviceClient()
 
-  const { data: plans, error } = await db.from('plans').select('id, name, price_cents')
+  const { data: plans, error } = await db.from('plans').select('id, name, price_cents, agency_rate_cents_per_min')
   if (error || !plans?.length) throw new Error(`plans: ${error?.message ?? 'empty'} — run \`npm run migrate\` first`)
   if (plans.some((p) => p.price_cents < 10_000)) {
     throw new Error('plans.price_cents looks like dollars — run `npm run migrate` (needs 0005_billing.sql)')
@@ -71,6 +71,33 @@ async function main() {
       customer_mapping: { type: 'by_id', event_payload_key: 'stripe_customer_id' },
       value_settings: { event_payload_key: 'value' },
     }))
+
+  // Phase 27: a second meter for the agency tier's pooled overage. Separate
+  // from the direct one because it bills at a different rate ($0.25 vs $0.35)
+  // and prices are immutable — one meter at two rates is not expressible.
+  //
+  // These product names DO reach an invoice, and they say VoiceFlow on purpose:
+  // the agency is our own direct customer and knows exactly who they buy from.
+  // It is their SUB-ORGS that must never see us, and a sub-org receives no
+  // invoice from us at all — that is what rolling up to one invoice means.
+  const agencyMeter =
+    meters.find((m) => m.event_name === AGENCY_METER_EVENT) ??
+    (await stripe.billing.meters.create({
+      display_name: 'Agency pooled minutes',
+      event_name: AGENCY_METER_EVENT,
+      default_aggregation: { formula: 'sum' },
+      customer_mapping: { type: 'by_id', event_payload_key: 'stripe_customer_id' },
+      value_settings: { event_payload_key: 'value' },
+    }))
+
+  const agencyRate = plans.find((p) => p.id === 'agency')?.agency_rate_cents_per_min ?? 25
+  const agencyProduct = await ensureProduct(stripe, products, 'agency_minutes', 'VoiceFlow Agency pooled minutes')
+  const agencyPrice = await ensurePrice(stripe, {
+    lookupKey: AGENCY_METER_EVENT,
+    product: agencyProduct.id,
+    unitAmount: agencyRate,
+    recurring: { interval: 'month', usage_type: 'metered', meter: agencyMeter.id },
+  })
 
   const overageProduct = await ensureProduct(stripe, products, 'overage', 'VoiceFlow Overage minutes')
   const overagePrice = await ensurePrice(stripe, {
@@ -101,6 +128,7 @@ async function main() {
         stripe_price_monthly_id: monthly.id,
         stripe_price_annual_id: annual.id,
         stripe_overage_price_id: overagePrice.id,
+        stripe_agency_price_id: agencyPrice.id,
       })
       .eq('id', plan.id)
     if (upErr) throw new Error(`plans update ${plan.id}: ${upErr.message}`)
@@ -110,6 +138,7 @@ async function main() {
     )
   }
   console.log(`overage: ${overagePrice.id} ($${OVERAGE_CENTS_PER_MIN / 100}/min, meter ${meter.id})`)
+  console.log(`agency:  ${agencyPrice.id} ($${agencyRate / 100}/min, meter ${agencyMeter.id})`)
 }
 
 main().catch((e) => {

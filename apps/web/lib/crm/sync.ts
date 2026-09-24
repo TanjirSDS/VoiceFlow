@@ -2,6 +2,7 @@ import type { Db } from '@voiceflow/db'
 import { activeConnections, markRevoked, usableConnection } from './connections'
 import { hubspotClient } from './hubspot'
 import { resolveMappings } from './mappings'
+import { productNameFor } from '../branding'
 import { externalNumber } from '../opt-out'
 import { pipedriveClient } from './pipedrive'
 import {
@@ -176,6 +177,7 @@ export async function syncCallToCrm(
       outcome: call.outcome,
       agentName: call.agents?.name ?? null,
       recordingUrl: call.recording_url,
+      productName: await productNameFor(db, stored.orgId),
       mappings,
     }
 

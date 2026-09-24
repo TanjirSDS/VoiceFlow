@@ -1,7 +1,8 @@
 import type Stripe from 'stripe'
 import type { Db } from '@voiceflow/db'
 import type { VoiceEngine } from '@voiceflow/engine'
-import { DUNNING_GRACE_DAYS, overageDelta, OVERAGE_METER_EVENT, planChange } from './billing-math'
+import { AGENCY_METER_EVENT, DUNNING_GRACE_DAYS, overageDelta, OVERAGE_METER_EVENT, planChange } from './billing-math'
+import { agencyMeterDelta, billsForItself } from './agency-math'
 import { pauseOrgAgents } from './usage'
 
 export type BillingInterval = 'monthly' | 'annual'
@@ -9,7 +10,7 @@ export type BillingInterval = 'monthly' | 'annual'
 async function getOrg(db: Db, orgId: string) {
   const { data, error } = await db
     .from('orgs')
-    .select('id, name, plan_id, overage_policy, stripe_customer_id, stripe_subscription_id')
+    .select('id, name, plan_id, overage_policy, stripe_customer_id, stripe_subscription_id, parent_org_id')
     .eq('id', orgId)
     .single()
   if (error) throw new Error(`org ${orgId}: ${error.message}`)
@@ -24,6 +25,22 @@ async function getPlan(db: Db, planId: string) {
     .single()
   if (error) throw new Error(`plan ${planId}: ${error.message}`)
   return data
+}
+
+/**
+ * A sub-org has no billing relationship with us — its minutes are pooled onto
+ * its parent's invoice (reportAgencyDaily). Every entry point that could open
+ * one asks this first.
+ *
+ * Throws rather than returning a flag: each of these is reached from a server
+ * action that would otherwise carry on and hand the user a Stripe URL, and a
+ * client being charged by us AND by the agency reselling to them is the exact
+ * double-billing this tier must never produce.
+ */
+function refuseIfSubOrg(org: { id: string; parent_org_id: string | null }) {
+  if (!billsForItself({ parentOrgId: org.parent_org_id })) {
+    throw new Error('This workspace is billed by your provider — there is no separate subscription to manage.')
+  }
 }
 
 function planPrice(plan: Awaited<ReturnType<typeof getPlan>>, interval: BillingInterval): string {
@@ -55,6 +72,7 @@ export async function startCheckout(
   paths?: { success?: string; cancel?: string }
 ): Promise<string> {
   const org = await getOrg(db, orgId)
+  refuseIfSubOrg(org)
   const plan = await getPlan(db, planId)
   const customer = await ensureCustomer(db, stripe, org)
 
@@ -121,6 +139,7 @@ export async function listInvoices(
 /** Customer portal: cards, invoices, cancel. */
 export async function portalUrl(db: Db, stripe: Stripe, orgId: string, origin: string): Promise<string> {
   const org = await getOrg(db, orgId)
+  refuseIfSubOrg(org)
   if (!org.stripe_customer_id) throw new Error('no billing account yet — pick a plan first')
   const session = await stripe.billingPortal.sessions.create({
     customer: org.stripe_customer_id,
@@ -145,6 +164,7 @@ export async function changePlan(
   origin: string
 ): Promise<string | null> {
   const org = await getOrg(db, orgId)
+  refuseIfSubOrg(org)
   if (!org.stripe_subscription_id) return startCheckout(db, stripe, orgId, newPlanId, interval, origin)
 
   const [current, next] = await Promise.all([getPlan(db, org.plan_id), getPlan(db, newPlanId)])
@@ -230,6 +250,103 @@ export async function reportOverageDaily(db: Db, stripe: Stripe, now = new Date(
     reported++
   }
   return reported
+}
+
+/**
+ * Phase 27 — roll every agency's family usage up onto ONE invoice: the parent's.
+ *
+ * Runs daily from the reconciliation cron, AFTER recompute_usage has rewritten
+ * each org's minutes from the calls table (rule 5), so the family total this
+ * reads is the reconciled number and never a webhook accumulation.
+ *
+ * Two steps per agency, in this order for a reason:
+ *
+ *   1. recompute_agency_usage() re-derives family_minutes and billable_minutes
+ *      from usage_periods. It deliberately does NOT touch reported_minutes.
+ *   2. Only the whole minutes not yet reported go to the meter, keyed to the
+ *      PARENT's stripe_customer_id — which is the entire mechanism by which a
+ *      dozen sub-orgs become one line on one invoice. Sub-orgs have no customer
+ *      and no subscription, so there is nothing else for their minutes to land on.
+ *
+ * Idempotent twice over. The event identifier `agency:{orgId}:{date}` is deduped
+ * by Stripe for ~24h, so a cron re-run on the same day cannot double-bill; and
+ * agency_periods.reported_minutes is the running ledger, so a re-run after
+ * midnight sends only what genuinely accrued.
+ */
+export async function reportAgencyDaily(db: Db, stripe: Stripe, now = new Date()): Promise<number> {
+  const period = now.toISOString().slice(0, 8) + '01'
+  const day = now.toISOString().slice(0, 10)
+
+  // Only orgs on an agency plan that are themselves top-level. A sub-org can
+  // never be here — the one-level trigger makes it impossible for one to have
+  // children, so it has no family to roll up.
+  const { data: agencies, error } = await db
+    .from('orgs')
+    .select('id, stripe_customer_id, stripe_subscription_id, plans!orgs_plan_id_fkey(agency_enabled, stripe_agency_price_id)')
+    .is('parent_org_id', null)
+    .not('stripe_customer_id', 'is', null)
+    .not('stripe_subscription_id', 'is', null)
+  if (error) throw new Error(error.message)
+
+  let reported = 0
+  for (const org of agencies ?? []) {
+    const plan = (Array.isArray(org.plans) ? org.plans[0] : org.plans) as {
+      agency_enabled: boolean
+      stripe_agency_price_id: string | null
+    } | null
+    if (!plan?.agency_enabled) continue
+
+    // Rule 5: the billed figure is re-derived, never accumulated.
+    const { error: rpcError } = await db.rpc('recompute_agency_usage', {
+      p_parent: org.id,
+      p_period: period,
+    })
+    if (rpcError) {
+      // One agency's failure must not stop the rest of the run; the next night
+      // re-derives from source anyway, so nothing is lost by continuing.
+      console.error(`recompute_agency_usage(${org.id}) failed:`, rpcError.message)
+      continue
+    }
+
+    const { data: row } = await db
+      .from('agency_periods')
+      .select('billable_minutes, reported_minutes')
+      .eq('parent_org_id', org.id)
+      .eq('period_start', period)
+      .maybeSingle()
+    if (!row) continue
+
+    const delta = agencyMeterDelta(row.billable_minutes, row.reported_minutes)
+    if (!delta) continue
+    if (!plan.stripe_agency_price_id) {
+      throw new Error(`plan for org ${org.id} has no agency price — run npm run stripe-setup`)
+    }
+    await ensureAgencyItem(stripe, org.stripe_subscription_id!, plan.stripe_agency_price_id)
+    await stripe.billing.meterEvents.create({
+      event_name: AGENCY_METER_EVENT,
+      identifier: `agency:${org.id}:${day}`,
+      payload: { stripe_customer_id: org.stripe_customer_id!, value: String(delta) },
+    })
+    // ponytail: read-modify-write is fine here for the same reason it is in
+    // reportOverageDaily — the cron is the only writer (the table is revoked
+    // from authenticated), and Stripe's identifier dedupe already blocks a
+    // double charge on a re-run.
+    await db
+      .from('agency_periods')
+      .update({ reported_minutes: row.reported_minutes + delta })
+      .eq('parent_org_id', org.id)
+      .eq('period_start', period)
+    reported++
+  }
+  return reported
+}
+
+/** An agency upgraded into the tier mid-cycle has no metered agency item on its
+ *  subscription yet — add it before the first report, like ensureOverageItem. */
+async function ensureAgencyItem(stripe: Stripe, subscriptionId: string, priceId: string) {
+  const sub = await stripe.subscriptions.retrieve(subscriptionId)
+  if (sub.items.data.some((i) => i.price.id === priceId)) return
+  await stripe.subscriptionItems.create({ subscription: subscriptionId, price: priceId })
 }
 
 /** Orgs whose overage_policy flipped to 'overage' after checkout have no

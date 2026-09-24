@@ -1,14 +1,19 @@
+import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
 import { Manrope, Space_Grotesk } from 'next/font/google'
 import Link from 'next/link'
 import { cookies, headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { AppShell } from '../components/app-shell'
-import { Logo, Waveform } from '../components/icons'
+import { BrandLockup } from '../components/brand-mark'
+import { BrandingProvider } from '../components/branding-provider'
+import { Waveform } from '../components/icons'
 import { ThemeProvider } from '../components/theme-provider'
 import { Toaster } from '../components/ui/sonner'
 import { exitViewAsAction } from './admin/actions'
 import { graceDaysLeft } from '../lib/billing-math'
+import { PLATFORM_BRAND_COLOR, PLATFORM_TAGLINE, pageBranding, type Branding } from '../lib/branding'
+import { paletteCss } from '../lib/brand-palette'
 import { activeOrg, currentUsage, listMemberships } from '../lib/org'
 import { userClient } from '../lib/db'
 import { currentUser, getAuth } from '../lib/auth'
@@ -27,7 +32,12 @@ const sans = Manrope({
   display: 'swap',
 })
 
-export const metadata = { title: 'VoiceFlow', description: 'AI voice agents for small business' }
+// Dynamic because the tab title is branding too: a sub-org whose dashboard says
+// "VoiceFlow" in the browser tab is not white-labelled, however the page looks.
+export async function generateMetadata(): Promise<Metadata> {
+  const branding = await pageBranding((await headers()).get('host'))
+  return { title: branding.productName, description: PLATFORM_TAGLINE }
+}
 
 async function signOut() {
   'use server'
@@ -142,23 +152,53 @@ function Banners() {
   )
 }
 
+/**
+ * The tenant palette, as a <style> element.
+ *
+ * Placed in <body> deliberately. React only hoists a <style> into <head> when it
+ * carries a `precedence` prop; without one it renders where it sits, which puts
+ * it after the stylesheet <link> in document order. That matters because
+ * Tailwind v4 compiles `@theme` into `:root` and globals.css redefines the same
+ * names under `.dark` — `:root` and `.dark` have EQUAL specificity, so the
+ * cascade is decided by order alone. Anywhere earlier and the tenant's colours
+ * would lose to the defaults they are meant to replace.
+ *
+ * Emitted only when the org actually has a colour: an unbranded customer's HTML
+ * stays byte-identical to what it was before this phase.
+ *
+ * The content is safe by construction, not by escaping — paletteCss() emits only
+ * values that came out of its own hex formatter, and the colour reaching it was
+ * validated against /^#[0-9a-f]{6}$/i twice (on write, and again on read in
+ * lib/branding.ts). There is no path by which a tenant string reaches this tag.
+ */
+function BrandPaletteStyle({ branding }: { branding: Branding }) {
+  if (branding.brandColor === PLATFORM_BRAND_COLOR) return null
+  return <style dangerouslySetInnerHTML={{ __html: paletteCss(branding.palette) }} />
+}
+
 export default async function RootLayout({ children }: { children: ReactNode }) {
   const org = await activeOrg()
+  const branding = await pageBranding((await headers()).get('host'))
 
   return (
     <html lang="en" suppressHydrationWarning className={`${display.variable} ${sans.variable}`}>
       <body className="antialiased">
+        <BrandPaletteStyle branding={branding} />
+        <BrandingProvider productName={branding.productName}>
         <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false} disableTransitionOnChange>
           {org ? (
-            <AppShell data={await shellData(org)} banner={<Banners />} signOut={signOut}>
+            <AppShell data={await shellData(org, branding)} banner={<Banners />} signOut={signOut}>
               {children}
             </AppShell>
           ) : (
             // Signed-out (login / signup): a clean centered brand canvas.
             <div className="flex min-h-screen flex-col">
               <div className="flex items-center gap-3 px-6 py-5">
-                <Logo />
-                <span className="font-display text-lg font-semibold tracking-tight">VoiceFlow</span>
+                <BrandLockup
+                  productName={branding.productName}
+                  logoUrl={branding.logoUrl}
+                  whiteLabelled={branding.whiteLabelled}
+                />
                 <Waveform className="ml-1 text-live" bars={4} />
               </div>
               <main className="flex flex-1 items-center justify-center px-6 pb-24">
@@ -168,13 +208,17 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           )}
           <Toaster />
         </ThemeProvider>
+        </BrandingProvider>
       </body>
     </html>
   )
 }
 
 // Assemble everything the sidebar shell needs in one place.
-async function shellData(org: NonNullable<Awaited<ReturnType<typeof activeOrg>>>) {
+async function shellData(
+  org: NonNullable<Awaited<ReturnType<typeof activeOrg>>>,
+  branding: Branding
+) {
   const [usage, memberships, jar, user] = await Promise.all([
     currentUsage(org.orgId),
     listMemberships(),
@@ -187,6 +231,14 @@ async function shellData(org: NonNullable<Awaited<ReturnType<typeof activeOrg>>>
     orgName: org.name,
     planName: org.plan.name,
     role: org.role,
+    productName: branding.productName,
+    logoUrl: branding.logoUrl,
+    whiteLabelled: branding.whiteLabelled,
+    // The Agency nav item only exists for an org that can actually resell, and
+    // never for a sub-org — a white-labelled client seeing "Agency" in the
+    // sidebar is the tier leaking through the label it is sold to hide.
+    showAgency: org.plan.agencyEnabled && org.parentOrgId === null,
+    isSubOrg: org.parentOrgId !== null,
     memberships,
     userEmail: user?.email ?? null,
     initialCollapsed: jar.get('sidebar-collapsed')?.value === '1',

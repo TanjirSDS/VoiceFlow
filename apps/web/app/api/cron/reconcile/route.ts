@@ -1,6 +1,6 @@
 import type { NextRequest } from 'next/server'
 import { getEnv, serviceClient } from '@voiceflow/db'
-import { expireDunning, reportOverageDaily } from '../../../../lib/billing'
+import { expireDunning, reportAgencyDaily, reportOverageDaily } from '../../../../lib/billing'
 import { makeEngine } from '../../../../lib/engine'
 import { reconcileYesterday } from '../../../../lib/reconcile'
 import { stripeClient } from '../../../../lib/stripe'
@@ -24,6 +24,7 @@ export async function GET(req: NextRequest) {
   try {
     billing = {
       overageOrgsReported: await reportOverageDaily(db, stripeClient()),
+      agencyOrgsReported: await reportAgencyDaily(db, stripeClient()),
       dunningPaused: await expireDunning(db, engine),
     }
   } catch (e) {

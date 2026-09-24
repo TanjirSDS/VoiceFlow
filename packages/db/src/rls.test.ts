@@ -80,13 +80,354 @@ describe.skipIf(!live)('RLS org isolation (live)', () => {
     // agents.org_id deliberately doesn't cascade (0004), so clear them first;
     // everything else we inserted cascades from orgs. Loud, not silent — the
     // old version never checked and would have leaked orgs on every run.
-    for (const table of ['agents', 'orgs'] as const) {
-      const { error } = await admin.from(table).delete().in(table === 'orgs' ? 'id' : 'org_id', orgs)
-      if (error) throw new Error(`cleanup ${table}: ${error.message}`)
-    }
+    const { error: agentErr } = await admin.from('agents').delete().in('org_id', orgs)
+    if (agentErr) throw new Error(`cleanup agents: ${agentErr.message}`)
+
+    // Phase 27: orgs.parent_org_id is ON DELETE RESTRICT (a parent with live
+    // sub-orgs holds other people's phone numbers), so CHILDREN MUST GO FIRST.
+    // Deleting the set in one statement leaves the order to Postgres and fails
+    // the moment it happens to reach a parent before its child.
+    const { error: childErr } = await admin.from('orgs').delete().in('parent_org_id', orgs)
+    if (childErr) throw new Error(`cleanup sub-orgs: ${childErr.message}`)
+    const { error: orgErr } = await admin.from('orgs').delete().in('id', orgs)
+    if (orgErr) throw new Error(`cleanup orgs: ${orgErr.message}`)
     await sql.query('delete from auth.users where id = any($1)', [users])
     await sql.end()
   }, 60_000)
+
+  /**
+   * ── Phase 27: the parent/child boundary ──────────────────────────────────
+   *
+   * is_org_member() gained an arm this phase (is_parent_reseller), and every one
+   * of the ~24 policies that call it inherited the new reach at once. That is a
+   * lot of blast radius for one function, so what it must and must NOT reach is
+   * proven here against a real database rather than argued in a comment.
+   *
+   * The shape being asserted: a reseller reaches DOWN into the orgs it created,
+   * never sideways into another agency's, never UP into its own parent, and
+   * never through a bearer key.
+   */
+  describe('agency parent/child boundary', () => {
+    let agencyUser: string
+    let agencyOrg: string
+    let childOrg: string
+    let rivalAgencyUser: string
+    let rivalAgencyOrg: string
+    let rivalChildOrg: string
+    let childOwnerUser: string
+    let resellerClient: Db
+    let rivalClient: Db
+    let childClient: Db
+
+    beforeAll(async () => {
+      // One agency with a client, and a RIVAL agency with its own client. The
+      // rival is the case a single-tenant test would miss entirely: both
+      // resellers hold a valid reseller role, so the question is not "does the
+      // role work" but "is it scoped to the right family".
+      const mk = async (tag: string) => {
+        const { rows: [u] } = await sql.query<{ id: string }>(
+          'insert into auth.users (email, email_verified) values ($1, true) returning id',
+          [`${stamp}-${tag}@voiceflow.test`]
+        )
+        users.push(u.id)
+        return u.id
+      }
+      const mkOrg = async (tag: string, parent: string | null) => {
+        const { data, error } = await admin
+          .from('orgs')
+          .insert({
+            name: `${stamp}-${tag}`,
+            plan_id: parent ? 'starter' : 'agency',
+            minutes_cap: 1000,
+            parent_org_id: parent,
+          })
+          .select('id')
+          .single()
+        if (error) throw new Error(`${tag}: ${error.message}`)
+        orgs.push(data.id)
+        return data.id
+      }
+
+      agencyUser = await mk('agency-a')
+      agencyOrg = await mkOrg('agency-a', null)
+      await admin.from('org_members').insert({ org_id: agencyOrg, user_id: agencyUser, role: 'reseller' })
+      childOrg = await mkOrg('client-a', agencyOrg)
+
+      rivalAgencyUser = await mk('agency-b')
+      rivalAgencyOrg = await mkOrg('agency-b', null)
+      await admin.from('org_members').insert({ org_id: rivalAgencyOrg, user_id: rivalAgencyUser, role: 'reseller' })
+      rivalChildOrg = await mkOrg('client-b', rivalAgencyOrg)
+
+      // A person who works AT the client, with no relationship to the agency.
+      childOwnerUser = await mk('client-a-owner')
+      await admin.from('org_members').insert({ org_id: childOrg, user_id: childOwnerUser, role: 'owner' })
+
+      await admin.from('agents').insert([
+        { org_id: childOrg, name: `${stamp}-agent-client-a`, provider: 'elevenlabs' },
+        { org_id: rivalChildOrg, name: `${stamp}-agent-client-b`, provider: 'elevenlabs' },
+        { org_id: agencyOrg, name: `${stamp}-agent-agency-a`, provider: 'elevenlabs' },
+      ])
+
+      resellerClient = createDb(URL!, SECRET!, { role: 'authenticated', sub: agencyUser })
+      rivalClient = createDb(URL!, SECRET!, { role: 'authenticated', sub: rivalAgencyUser })
+      childClient = createDb(URL!, SECRET!, { role: 'authenticated', sub: childOwnerUser })
+    }, 60_000)
+
+    it('a reseller reaches DOWN into its own client', async () => {
+      const { data } = await resellerClient.from('agents').select('name, org_id')
+      expect(data!.some((r) => r.org_id === childOrg)).toBe(true)
+      expect(data!.some((r) => r.name === `${stamp}-agent-client-a`)).toBe(true)
+    }, 30_000)
+
+    // THE CASE THAT MATTERS MOST. Both users are legitimate resellers, so a
+    // policy that checks "is this caller a reseller anywhere" instead of "of
+    // THIS org's parent" passes every other test here and fails this one.
+    it('a reseller cannot reach SIDEWAYS into another agency\'s client', async () => {
+      const { data } = await resellerClient.from('agents').select('name, org_id')
+      expect(data!.some((r) => r.org_id === rivalChildOrg)).toBe(false)
+      expect(data!.some((r) => r.name === `${stamp}-agent-client-b`)).toBe(false)
+
+      const { data: rival } = await rivalClient.from('agents').select('org_id')
+      expect(rival!.some((r) => r.org_id === childOrg)).toBe(false)
+    }, 30_000)
+
+    it('a client cannot reach UP into the agency that resells to it', async () => {
+      const { data } = await childClient.from('agents').select('name, org_id')
+      expect(data!.every((r) => r.org_id === childOrg)).toBe(true)
+      expect(data!.some((r) => r.name === `${stamp}-agent-agency-a`)).toBe(false)
+      // ...nor sideways into a sibling, which is the same hop in reverse.
+      expect(data!.some((r) => r.org_id === rivalChildOrg)).toBe(false)
+
+      const { data: parentRow } = await childClient.from('orgs').select('id').eq('id', agencyOrg)
+      expect(parentRow).toHaveLength(0)
+    }, 30_000)
+
+    it("a client cannot edit the branding its reseller set", async () => {
+      await admin.from('org_branding').insert({ org_id: childOrg, product_name: 'Agency A Voice' })
+      // branding_update requires is_org_owner AND not-a-sub-org, or
+      // is_parent_reseller. A sub-org's own owner satisfies neither, which is
+      // what stops a white-labelled client renaming the product out from under
+      // the agency reselling to them.
+      const { error } = await childClient
+        .from('org_branding')
+        .update({ product_name: 'Renamed By Client' })
+        .eq('org_id', childOrg)
+      const { data: after } = await admin
+        .from('org_branding')
+        .select('product_name')
+        .eq('org_id', childOrg)
+        .single()
+      // NOTE the assertion that matters is the VALUE, not `error`. A policy
+      // that matches no rows makes this a zero-row update, which PostgREST
+      // reports as success — so "no error" here would prove nothing at all.
+      expect(after!.product_name).toBe('Agency A Voice')
+      expect(error?.message ?? 'blocked by policy (zero rows)').toBeTruthy()
+
+      // The reseller above it can.
+      const { error: rErr } = await resellerClient
+        .from('org_branding')
+        .update({ product_name: 'Agency A Voice v2' })
+        .eq('org_id', childOrg)
+      expect(rErr).toBeNull()
+      const { data: after2 } = await admin
+        .from('org_branding')
+        .select('product_name')
+        .eq('org_id', childOrg)
+        .single()
+      expect(after2!.product_name).toBe('Agency A Voice v2')
+    }, 30_000)
+
+    it('nobody can mark their own sending domain verified', async () => {
+      // The column grant is revoked, so this is refused by privilege, not policy
+      // — a reseller who could set it would send mail as any domain they chose.
+      const { error } = await resellerClient
+        .from('org_branding')
+        .update({ email_sender_verified: true })
+        .eq('org_id', childOrg)
+      expect(error).toBeTruthy()
+      const { data } = await admin
+        .from('org_branding')
+        .select('email_sender_verified')
+        .eq('org_id', childOrg)
+        .single()
+      expect(data!.email_sender_verified).toBe(false)
+    }, 30_000)
+
+    it('an API key cannot borrow the reseller reach of the person who made it', async () => {
+      // auth.uid() is NULL for a key token, so the org_members join inside
+      // is_parent_reseller matches nothing. The reseller's SESSION sees the
+      // client; their KEY, scoped to the agency org, does not.
+      const keyDb = createDb(URL!, SECRET!, { role: 'authenticated', org_id: agencyOrg })
+      const { data } = await keyDb.from('agents').select('org_id')
+      expect(data!.length).toBeGreaterThan(0)
+      expect(data!.every((r) => r.org_id === agencyOrg)).toBe(true)
+      expect(data!.some((r) => r.org_id === childOrg)).toBe(false)
+    }, 30_000)
+
+    // Finding F2 of the phase's security review. Branding resolves by HOST
+    // before it resolves by session, so a tenant who could verify their own
+    // claim would point a vanity host at our own domain and repaint the real
+    // product for every visitor. The column is withheld by grant, not policy.
+    it('a reseller cannot verify its own vanity host', async () => {
+      await admin
+        .from('org_branding')
+        .upsert({ org_id: childOrg, custom_domain: `${stamp}-claimed.test` }, { onConflict: 'org_id' })
+      const { error } = await resellerClient
+        .from('org_branding')
+        .update({ custom_domain_verified_at: new Date().toISOString() })
+        .eq('org_id', childOrg)
+      expect(error).toBeTruthy()
+      const { data } = await admin
+        .from('org_branding')
+        .select('custom_domain_verified_at')
+        .eq('org_id', childOrg)
+        .single()
+      expect(data!.custom_domain_verified_at).toBeNull()
+    }, 30_000)
+
+    // Finding F1. The value reaches a mail header; length was never the limit.
+    it('the database refuses a product name carrying a CRLF', async () => {
+      const { error } = await admin
+        .from('org_branding')
+        .upsert({ org_id: childOrg, product_name: 'Acme\r\nBcc: attacker@evil' }, { onConflict: 'org_id' })
+      expect(error).toBeTruthy()
+    }, 30_000)
+
+    /**
+     * THE TIER'S CORE PROMISE, as an assertion.
+     *
+     * "A sub-org sees zero VoiceFlow branding anywhere." Resolution is own row →
+     * PARENT's row → platform, and a sub-org's member is NOT a member of the
+     * parent — so without the branding_read_parent policy the parent's row is
+     * invisible to them and every unbranded client falls back to "VoiceFlow".
+     *
+     * Found by the phase's security review, not by the build and not by the
+     * signed-out custom-domain check (that path runs as service_role, which
+     * bypasses RLS and therefore could never have shown this).
+     */
+    it('a client can READ the branding it inherits from its agency', async () => {
+      await admin
+        .from('org_branding')
+        .upsert({ org_id: agencyOrg, product_name: 'Northwind Voice' }, { onConflict: 'org_id' })
+
+      const { data } = await childClient
+        .from('org_branding')
+        .select('org_id, product_name')
+        .eq('org_id', agencyOrg)
+      expect(data).toHaveLength(1)
+      expect(data![0].product_name).toBe('Northwind Voice')
+    }, 30_000)
+
+    it('...but reading the parent BRANDING grants nothing else about the parent', async () => {
+      // The inverted-downward policy is deliberately narrow: the client sees the
+      // name and colour it is already shown on every screen, and nothing more.
+      const { data: parentOrg } = await childClient.from('orgs').select('id').eq('id', agencyOrg)
+      expect(parentOrg).toHaveLength(0)
+      const { data: parentAgents } = await childClient.from('agents').select('id').eq('org_id', agencyOrg)
+      expect(parentAgents).toHaveLength(0)
+    }, 30_000)
+
+    it('a stranger still cannot read an agency\'s branding', async () => {
+      // clientA and clientB from the outer suite are unrelated orgs.
+      const { data } = await clientB.from('org_branding').select('org_id').eq('org_id', agencyOrg)
+      expect(data).toHaveLength(0)
+    }, 30_000)
+
+    /**
+     * Finding F3. The stamp is per-ROW; the claim it certifies is per-HOSTNAME.
+     * Nothing re-armed it when the hostname changed, so a tenant whose first
+     * host was verified could repoint the column at any other host — including
+     * a rival's — and keep the verification.
+     */
+    it('changing the vanity host clears its verification', async () => {
+      // TWO statements, and it has to be two: the trigger clears the stamp on
+      // any write that changes the hostname, so setting both at once would
+      // (correctly) verify nothing. That is also the real operational order —
+      // a host is claimed first, then verified once its DNS checks out.
+      await admin
+        .from('org_branding')
+        .upsert({ org_id: childOrg, custom_domain: `${stamp}-first.test` }, { onConflict: 'org_id' })
+      await admin
+        .from('org_branding')
+        .update({ custom_domain_verified_at: new Date().toISOString() })
+        .eq('org_id', childOrg)
+      const { data: before } = await admin
+        .from('org_branding')
+        .select('custom_domain_verified_at')
+        .eq('org_id', childOrg)
+        .single()
+      expect(before!.custom_domain_verified_at).not.toBeNull()
+
+      // The reseller repoints the host — the one write they are allowed.
+      const { error } = await resellerClient
+        .from('org_branding')
+        .update({ custom_domain: `${stamp}-second.test` })
+        .eq('org_id', childOrg)
+      expect(error).toBeNull()
+
+      const { data: after } = await admin
+        .from('org_branding')
+        .select('custom_domain, custom_domain_verified_at')
+        .eq('org_id', childOrg)
+        .single()
+      expect(after!.custom_domain).toBe(`${stamp}-second.test`)
+      expect(after!.custom_domain_verified_at).toBeNull()
+    }, 30_000)
+
+    it('an unrelated edit does NOT clear a verification', async () => {
+      // The trigger must re-arm on a hostname change and stay out of the way
+      // otherwise — clearing on every save would make verification unusable.
+      await admin
+        .from('org_branding')
+        .update({ custom_domain_verified_at: new Date().toISOString() })
+        .eq('org_id', childOrg)
+      await resellerClient.from('org_branding').update({ product_name: 'Renamed' }).eq('org_id', childOrg)
+      const { data } = await admin
+        .from('org_branding')
+        .select('custom_domain_verified_at')
+        .eq('org_id', childOrg)
+        .single()
+      expect(data!.custom_domain_verified_at).not.toBeNull()
+    }, 30_000)
+
+    it('a reseller cannot write the rollup it is billed from', async () => {
+      const { error } = await resellerClient
+        .from('agency_periods')
+        .insert({ parent_org_id: agencyOrg, period_start: '2026-01-01', pooled_minutes: 999999 })
+      expect(error).toBeTruthy()
+    }, 30_000)
+
+    it('tenancy stays exactly one level deep', async () => {
+      // A grandchild would make every rule in this phase silently wrong rather
+      // than loudly broken, so the database refuses all three ways to build one.
+      const grand = await admin
+        .from('orgs')
+        .insert({ name: `${stamp}-grandchild`, minutes_cap: 10, parent_org_id: childOrg })
+        .select('id')
+      expect(grand.error).toBeTruthy()
+
+      // ...and an existing parent cannot be demoted into a child.
+      const demote = await admin.from('orgs').update({ parent_org_id: rivalAgencyOrg }).eq('id', agencyOrg)
+      expect(demote.error).toBeTruthy()
+
+      // ...nor can an org be its own parent.
+      const selfRef = await admin.from('orgs').update({ parent_org_id: childOrg }).eq('id', childOrg)
+      expect(selfRef.error).toBeTruthy()
+    }, 30_000)
+
+    it('losing the agency plan narrows the reseller\'s reach', async () => {
+      // is_parent_reseller() reads the parent's plan flag, so entitlement and
+      // reach cannot disagree. Asserted by flipping the plan and re-reading:
+      // the sub-org's rows disappear, and come back when it is restored.
+      await admin.from('orgs').update({ plan_id: 'pro' }).eq('id', agencyOrg)
+      const { data: lapsed } = await resellerClient.from('agents').select('org_id')
+      expect(lapsed!.some((r) => r.org_id === childOrg)).toBe(false)
+
+      await admin.from('orgs').update({ plan_id: 'agency' }).eq('id', agencyOrg)
+      const { data: restored } = await resellerClient.from('agents').select('org_id')
+      expect(restored!.some((r) => r.org_id === childOrg)).toBe(true)
+    }, 30_000)
+  })
 
   it('a request with no token is rejected, not answered', async () => {
     const { data, error } = await createDb(URL!, SECRET!, null).from('orgs').select('id')

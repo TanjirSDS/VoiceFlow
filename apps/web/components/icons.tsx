@@ -40,6 +40,17 @@ export const AlertIcon = (p: IconProps) => (
   </Icon>
 )
 
+// Phase 27: the agency console — one building with smaller ones beside it,
+// i.e. "your clients", in the same 1.75 stroke as the rest of the set.
+export const AgencyIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M3 21h18" />
+    <path d="M5 21V7l6-4v18" />
+    <path d="M11 21V11l8 3v7" />
+    <path d="M8 9h.01M8 13h.01M8 17h.01" />
+  </Icon>
+)
+
 export const IntegrationsIcon = (p: IconProps) => (
   <Icon {...p}>
     <path d="M9 2v6" />
