@@ -216,6 +216,37 @@ check "key_hash lookup is indexed and unique" "1" \
 check "only the pro plan has API access" "pro" \
   "select string_agg(id, ',' order by id) from plans where api_enabled"
 
+# Phase 25: the CRM OAuth tokens get the same treatment as the Twilio creds —
+# and for the same reason. These are bearer credentials for a customer's CRM;
+# a single readable column here exports every tenant's sales system.
+check "tenants hold NO privilege on CRM creds" "0" \
+  "select count(*) from (values ('anon'),('authenticated')) r(role),
+   (values ('SELECT'),('INSERT'),('UPDATE'),('DELETE')) p(priv)
+   where has_table_privilege(r.role, 'public.org_crm_connections', p.priv)"
+check "no policy re-opens CRM creds" "0" \
+  "select count(*) from pg_policies where schemaname='public' and tablename='org_crm_connections'"
+check "CRM creds have RLS on" "t" \
+  "select rowsecurity from pg_tables where schemaname='public' and tablename='org_crm_connections'"
+# The UI reads this view instead of the table. If a later migration widens it to
+# select *, the tokens ship to the browser — so assert the columns it must NOT
+# have, rather than the ones it should.
+check "the CRM status view exposes no token" "0" \
+  "select count(*) from information_schema.columns
+   where table_schema='public' and table_name='org_crm_connection_status'
+     and column_name like '%token%'"
+# Field mappings are configuration, not secrets: members must be able to read
+# and write their own org's. A regression to service-role-only would look like
+# 'nothing saves' with no error.
+check "members can manage their CRM field mappings" "1" \
+  "select count(*) from pg_policies
+   where schemaname='public' and tablename='org_crm_field_mappings'"
+# One activity per (call, provider) is what stops an Inngest retry from logging
+# the same call twice in the customer's CRM.
+check "CRM sync is unique per call+provider" "1" \
+  "select count(*) from pg_indexes
+   where schemaname='public' and tablename='crm_sync_attempts'
+     and indexdef like '%UNIQUE%' and indexdef like '%call_id%' and indexdef like '%provider%'"
+
 echo "==> re-running (must be a no-op)"
 rerun=$(npx tsx scripts/migrate.ts)
 echo "$rerun" | sed 's/^/    /'

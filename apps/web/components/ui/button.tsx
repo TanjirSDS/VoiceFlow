@@ -1,9 +1,11 @@
-// shadcn/ui button, trimmed: no Slot/asChild (nothing here needs it yet).
+// shadcn/ui button, trimmed: no Slot/asChild. buttonVariants is exported so an
+// anchor can be styled as a button — needed where a real navigation is required
+// (OAuth connect), which a <button> cannot do.
 import { cva, type VariantProps } from 'class-variance-authority'
 import type { ButtonHTMLAttributes } from 'react'
 import { cn } from '../../lib/utils'
 
-const buttonVariants = cva(
+export const buttonVariants = cva(
   'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background active:translate-y-px disabled:pointer-events-none disabled:opacity-50',
   {
     variants: {
