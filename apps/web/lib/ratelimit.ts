@@ -10,6 +10,10 @@ const WINDOWS = {
   auth: { tokens: 8, window: '15 m' },
   /** Webhook endpoints: flood protection ahead of signature verification. */
   webhook: { tokens: 300, window: '1 m' },
+  /** Phase 24 public API, per key (not per IP — a key is the tenant identity,
+   *  and one customer's CI box must not spend another's budget). Generous
+   *  enough for a sync loop, low enough that a runaway script is capped. */
+  api: { tokens: 120, window: '1 m' },
 } as const
 
 let limiters: Partial<Record<keyof typeof WINDOWS, Limiter>> | null | undefined

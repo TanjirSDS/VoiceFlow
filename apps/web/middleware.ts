@@ -14,6 +14,9 @@ const PUBLIC_PREFIXES = [
   '/api/health',
   '/api/inngest',
   '/api/tools',
+  // Phase 24: the public API authenticates with a bearer key, not a session
+  // cookie. withApiAuth() is the gate — see lib/api-v1/wrapper.ts.
+  '/api/v1',
 ]
 
 // Gates everything else behind a real session check (Node runtime, so Better

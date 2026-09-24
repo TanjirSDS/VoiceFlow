@@ -82,6 +82,35 @@ stay off the PostgREST API. Each file runs in its own transaction. Once a migrat
 applied its contents are frozen — the runner compares checksums and refuses to continue if an
 applied file was edited; add a new migration instead.
 
+## Public API (Pro)
+
+Pro workspaces can create API keys under **Integrations → API keys**. The key is shown once
+at creation — we store only a SHA-256 of it, so it cannot be recovered, only revoked.
+
+```
+curl -H "Authorization: Bearer vf_..." https://<app>/api/v1/agents
+```
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| `GET` | `/api/v1/agents` | `limit` (max 200), `offset` |
+| `GET` | `/api/v1/agents/{id}` | |
+| `GET` | `/api/v1/calls` | `agent_id`, `direction`, `from`, `to`, `limit`, `offset` |
+| `GET` | `/api/v1/calls/{id}` | |
+| `GET` | `/api/v1/usage` | current UTC month |
+| `POST` | `/api/v1/calls` | `{ agent_id, to, variables? }` — places an outbound call |
+
+`POST /api/v1/calls` answers `202` with the provider call id; the call row itself is written
+at hangup by the post-call webhook, so poll `GET /api/v1/calls` or subscribe to the
+`call.completed` webhook. It refuses (and never dials) a number on the workspace opt-out
+list, an agent outside the key's workspace, a paused agent, a past-due workspace, or a
+request over the simultaneous-call ceiling.
+
+Errors are `{ "error": { "code", "message" } }`. `401` invalid or revoked key, `403`
+`plan_upgrade_required` on a non-Pro plan or `opted_out`, `429` rate limited or at the
+call ceiling. A key is scoped to one workspace by Postgres RLS and never carries admin
+rights, even when its creator is a platform admin.
+
 ## Checks
 
 - `npm test` — vitest (webhook HMAC, payload normalization, idempotency, money math; RLS tests run when `POSTGREST_URL` is set)

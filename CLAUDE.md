@@ -1414,3 +1414,107 @@ normalizeCallEvent(payload) → CallEvent { providerCallId, direction, fromE164,
   minio/minio is gone from Docker Hub): put, presigned GET 200 + bytes, Range 206, unsigned
   403, cross-key signature 403, missing key → null, expiry → 403, idempotent delete. Railway's
   virtual-hosted endpoint itself is still unprobed.
+
+### Phase 24 public API (2026-09-23)
+- 0020: `api_keys` (org_id, name, key_hash UNIQUE, prefix, last_used_at, revoked_at,
+  created_by) + `plans.api_enabled` (Pro only, the 0012/0014 add-a-flag pattern) + the
+  is_org_member() change below. apiEnabled threaded through all 5 org.ts spots (interface,
+  3 select strings, 2 inline plan row types, 3 returns) — the same chore every plan flag
+  costs; the admin block's type is indented differently and is easy to miss.
+- WE STORE A HASH, NEVER THE KEY. sha256, unsalted, and that is the right call here rather
+  than bcrypt/argon2: the secret is 32 random bytes, not a human-chosen password, so there
+  is no dictionary to grind, and a per-row salt would turn authentication from one indexed
+  lookup into a scan of every key in the table. The key is shown exactly once at creation.
+  apiKeyInsert() is a separate pure function ONLY so "the persisted row never contains the
+  key" is a unit test rather than a comment — a typo writing `key` instead of `hash` is the
+  one mistake that turns a database dump into working credentials for every tenant.
+- RLS FOR A BEARER KEY — the design decision of the phase. A key belongs to an ORG, not a
+  user, so its PostgREST token carries `org_id` and NO `sub`, and is_org_member() gained a
+  third arm: `or p_org = auth.api_key_org()`. One function changed; all ~24 policies that
+  call it inherit it. What a key still CANNOT do falls out for free: auth.uid() is null for
+  it, so is_admin() is false and own_memberships/own_admin_row match nothing — a key is
+  confined to one org and can never inherit the platform-admin powers its creator holds
+  (rls.test proves exactly this: the same user's SESSION sees every org, their KEY sees one).
+  Fails closed by construction — the claim is absent from session tokens, `p_org = NULL` is
+  NULL, and USING/WITH CHECK treat NULL as false. Only our server signs these tokens and
+  userDb() never puts org_id in one, so a session cannot forge org scope.
+  REJECTED: keying the token to the creating user's id — a key that dies when someone leaves
+  the org, or keeps working after they do, is a bug in both directions.
+- The function must declare `returns uuid` AND cast: `->>` yields text and the migration
+  fails with "return type mismatch" otherwise (caught on the first verify run).
+- COLUMN GRANTS on top of RLS: 0000 grants members table-level SELECT on every public table,
+  which would include key_hash, so 0020 revokes the table grant and re-grants per column.
+  Members get no DELETE (revocation is permanent and keeps the trail) and UPDATE on
+  (name, revoked_at) only — so a member can never re-point an existing key's hash at a
+  secret they chose. service_role keeps full read; the auth lookup needs it.
+- AUTH SURFACE (lib/api-auth.ts + api-v1/wrapper.ts): every failure answers the SAME generic
+  401 text — absent, malformed, unknown and revoked keys are indistinguishable, so there is
+  no oracle for probing which keys exist. Revoked is 401 (the credential is dead); a Starter
+  key is 403 `plan_upgrade_required` (the credential is genuine, the plan isn't). The key
+  lookup runs as service_role because the caller has no session — RLS cannot scope the very
+  query that establishes who they are — and it reads the key row and nothing else; all
+  tenant data goes through apiKeyDb(orgId). last_used_at is best-effort and its failure
+  never fails a request.
+- `cache-control: no-store` is stamped by the wrapper on EVERY response, not by each
+  handler: one forgotten header on a per-tenant payload is a shared cache serving org A's
+  calls to org B. (The test caught this — handlers build their own Response, so the
+  wrapper's headers did not apply until it re-stamped them.)
+- SERIALIZERS ARE AN ALLOW-LIST (api-v1/shape.ts). The rows carry provider_agent_id,
+  prompts, share_token, recording_path and raw transcripts; returning a row directly is how
+  those leak, so adding a field is a deliberate act of publishing it. Asserted negatively —
+  the tests check the serialized JSON does not contain the provider id, the prompt or the
+  share token.
+- OUTBOUND CREATE is a money loop (rule 3), so the policy is pure and exhaustively tested
+  (outboundCallDecision) and the tests assert the ENGINE IS NEVER REACHED on every refusal
+  path — a refusal that still dials is a billed call. Order is deliberate and asserted:
+  opt-out (TCPA) outranks the concurrency ceiling, because `concurrency_limit` reads as
+  "retry shortly" and retrying a DNC number is the one thing that must never happen. Also
+  gated: agent not found (RLS returns no row for another org's agent → 404, no probing),
+  payment_failed_at → 402, paused agent → 409, dial headroom (Phase 20) → 429. Answers 202,
+  not 201: the calls row is written at hangup by the post-call webhook, so there is no
+  /calls/{id} to point at yet — callers poll the list or subscribe to call.completed.
+- `?limit=0` must not read as "no limit given". Number('') is also 0, so absent and
+  present-but-zero have to be told apart BEFORE parsing or the clamp silently returns the
+  default (the test caught it).
+- Next 15's route validator requires the handler's second parameter to be exactly
+  `{ params: Promise<any> }` — neither the parameter nor `params` may accept undefined, and
+  a narrower element type is rejected for the static routes. Cost two build failures; the
+  wrapper types it at that boundary and reads it back as a string map immediately.
+- UI on /integrations?tab=api (not a new nav item — it is where the other developer
+  credential, webhook endpoints, already lives). Owner-gated, unlike webhook endpoints: an
+  endpoint only RECEIVES data we push, while a key reads every call and can spend money
+  placing them. The page never selects key_hash (it cannot — the column grant is revoked),
+  and createApiKeyAction re-checks the plan, so the upsell card is UX and the action is the
+  gate.
+- DEFECT FOUND BY THE SECURITY REVIEW, then fixed: the settings page listed api_keys and
+  revokeApiKeyAction revoked them with NO org filter, relying on RLS. RLS is the wrong
+  boundary here — is_org_member() answers "is this user a member of that org?", which spans
+  EVERY workspace they belong to, while the action had authorized exactly one (the active
+  org, where it checked owner + Pro). Since createWorkspaceAction lets anyone provision a
+  workspace they own, a plain member of someone else's workspace could put themselves in an
+  owner+Pro seat, see that workspace's keys listed on their own settings page (name, prefix,
+  the creator's email), and revoke them. Fixed by lib/api-keys-db.ts: listApiKeys/revokeApiKey
+  both take the org EXPLICITLY, and revoke returns a row count so a no-op can't report
+  success. RLS stays as defence in depth; the org filter is the actual boundary.
+  MY OWN COMMENT WAS THE TELL — it said "RLS scopes this to the caller's org", which I wrote
+  without checking. Asserting a security property in a comment is how it goes unverified.
+  Regression-tested live in apps/web/lib/api-keys-db.live.test.ts (now run by migrate:verify),
+  and negative-probed: restoring the unscoped queries fails 2 of its cases with exit 1.
+  NOTE FOR LATER — setWebhookEndpointEnabledAction and deleteWebhookEndpointAction (Phase 17,
+  same file) have the identical shape and the same exposure. NOT fixed here (out of scope);
+  they need the same `.eq('org_id', org.orgId)` treatment.
+- A structural guard (api-v1/routes.test.ts) refuses any route under app/api/v1 whose
+  handlers aren't built by withApiAuth — middleware exempts that prefix from the session
+  gate, so a route added later that forgets the wrapper would be silently public.
+  Negative-probed with an unwrapped route.
+- VERIFIED (2026-09-23): 20 migrations + 14/14 live RLS on postgres:17 + postgrest v16.3;
+  9 new credential invariants asserted in migrate:verify. NEGATIVE-PROBED rather than
+  assumed — granting members select(key_hash) fails both the harness check and the rls
+  case, and widening the claim to `auth.api_key_org() is not null` fails all 3 confinement
+  cases. 342 unit tests (+54), lint (provider fence intact) + typecheck + build clean, all
+  5 /api/v1 routes emit.
+- NOT YET VERIFIED LIVE (needs the Railway project, like every prior phase): a real request
+  against a deployed /api/v1 with a real key; the Upstash per-key limit actually throttling
+  (limits no-op without UPSTASH_* env); an outbound call placed through POST /api/v1/calls
+  reaching ElevenLabs. Left undone on purpose: no pagination cursor (limit/offset only), no
+  CORS (server-to-server), no per-key scopes — every key is full org read + dial.
