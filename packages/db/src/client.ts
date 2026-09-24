@@ -44,6 +44,15 @@ export function userDb(userId: string | null): Db {
   return createDb(env.POSTGREST_URL, env.POSTGREST_JWT_SECRET, userId ? { role: 'authenticated', sub: userId } : null)
 }
 
+/** RLS-scoped client for one API key (Phase 24). Carries org_id and NO sub, so
+ *  is_org_member() grants exactly that org and auth.uid() stays null — a key can
+ *  never reach the platform-admin powers its creator might hold. The org must
+ *  already have been resolved by authenticating the key. */
+export function apiKeyDb(orgId: string): Db {
+  const env = getEnv()
+  return createDb(env.POSTGREST_URL, env.POSTGREST_JWT_SECRET, { role: 'authenticated', org_id: orgId })
+}
+
 let _pool: Pool | undefined
 
 /** Direct Postgres for what PostgREST doesn't expose (the auth schema). Our SQL

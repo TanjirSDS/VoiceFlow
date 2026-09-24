@@ -125,8 +125,11 @@ else
 fi
 
 echo "==> live RLS isolation tests through PostgREST"
-if ! npx vitest run packages/db/src/rls.test.ts; then
-  echo "    FAIL rls.test.ts"
+# api-keys-db.live.test.ts belongs here too: it proves the settings UI's reads
+# and revokes are scoped to ONE org, which RLS alone does not do (it narrows to
+# every org the viewer is a member of).
+if ! npx vitest run packages/db/src/rls.test.ts apps/web/lib/api-keys-db.live.test.ts; then
+  echo "    FAIL live tests"
   fail=1
 fi
 
@@ -176,6 +179,42 @@ check "the backfill's index is partial" "1" \
   "select count(*) from pg_indexes where schemaname='public'
    and indexname='phone_numbers_unmigrated_idx'
    and indexdef like '%WHERE (twilio_account_sid IS NULL)%'"
+
+# Phase 24 public API (0020). The key table is a credential store and the org_id
+# claim is a new way into RLS, so both are asserted here rather than left to
+# review. Each failure below is either a credential leak or a tenancy breach.
+check "members cannot read a key hash" "0" \
+  "select count(*) from information_schema.column_privileges
+   where grantee='authenticated' and table_schema='public' and table_name='api_keys'
+   and column_name='key_hash' and privilege_type='SELECT'"
+check "members can still read a key's display columns" "1" \
+  "select count(*) from information_schema.column_privileges
+   where grantee='authenticated' and table_schema='public' and table_name='api_keys'
+   and column_name='prefix' and privilege_type='SELECT'"
+# Revocation must be permanent: deleting the row would let a tenant erase the
+# record, and re-writing key_hash would let them re-point a key at a chosen secret.
+check "members cannot delete keys (revoke is the only exit)" "0" \
+  "select count(*) from (values ('anon'),('authenticated')) r(role)
+   where has_table_privilege(r.role, 'public.api_keys', 'DELETE')"
+check "members cannot rewrite a key hash" "0" \
+  "select count(*) from information_schema.column_privileges
+   where grantee='authenticated' and table_schema='public' and table_name='api_keys'
+   and column_name='key_hash' and privilege_type='UPDATE'"
+check "api_keys has RLS on" "t" \
+  "select rowsecurity from pg_tables where schemaname='public' and tablename='api_keys'"
+check "anon holds nothing on api_keys" "0" \
+  "select count(*) from information_schema.role_table_grants
+   where grantee='anon' and table_schema='public' and table_name='api_keys'"
+# The authentication lookup runs as service_role, so it must keep full read.
+check "service_role can still read key hashes" "t" \
+  "select has_column_privilege('service_role', 'public.api_keys', 'key_hash', 'SELECT')"
+# The hash lookup must be indexed — authentication does it on every API request.
+check "key_hash lookup is indexed and unique" "1" \
+  "select count(*) from pg_indexes where schemaname='public' and tablename='api_keys'
+   and indexdef like '%UNIQUE%' and indexdef like '%key_hash%'"
+# Only Pro. A wrong seed here silently opens the API to every tenant.
+check "only the pro plan has API access" "pro" \
+  "select string_agg(id, ',' order by id) from plans where api_enabled"
 
 echo "==> re-running (must be a no-op)"
 rerun=$(npx tsx scripts/migrate.ts)
