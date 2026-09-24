@@ -76,13 +76,18 @@ export async function createAlertAction(input: AlertInput): Promise<{ error?: st
 export async function updateAlertAction(id: string, input: AlertInput): Promise<{ error?: string }> {
   const db = await userClient()
   try {
-    await requireOrg()
+    const org = await requireOrg()
     // Editing the rule re-arms it (crossing state stale after a threshold change).
-    const { error } = await db
+    // Scoped to the active org explicitly — RLS spans every workspace the caller
+    // belongs to, so it is not the boundary here.
+    const { data, error } = await db
       .from('alerts')
       .update({ ...toRow(input), last_state: false })
       .eq('id', id)
+      .eq('org_id', org.orgId)
+      .select('id')
     if (error) throw new Error(error.message)
+    if (!data?.length) throw new Error('Alert not found.')
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) }
   }
@@ -92,18 +97,25 @@ export async function updateAlertAction(id: string, input: AlertInput): Promise<
 
 export async function setAlertEnabledAction(id: string, enabled: boolean): Promise<{ error?: string }> {
   const db = await userClient()
-  await requireOrg()
-  const { error } = await db.from('alerts').update({ enabled }).eq('id', id)
+  const org = await requireOrg()
+  const { data, error } = await db
+    .from('alerts')
+    .update({ enabled })
+    .eq('id', id)
+    .eq('org_id', org.orgId)
+    .select('id')
   if (error) return { error: error.message }
+  if (!data?.length) return { error: 'Alert not found.' }
   revalidatePath('/alerts')
   return {}
 }
 
 export async function deleteAlertAction(id: string): Promise<{ error?: string }> {
   const db = await userClient()
-  await requireOrg()
-  const { error } = await db.from('alerts').delete().eq('id', id)
+  const org = await requireOrg()
+  const { data, error } = await db.from('alerts').delete().eq('id', id).eq('org_id', org.orgId).select('id')
   if (error) return { error: error.message }
+  if (!data?.length) return { error: 'Alert not found.' }
   revalidatePath('/alerts')
   return {}
 }

@@ -15,8 +15,11 @@ export interface ContactPatch {
 const empty = (v: string | null | undefined) => (v && v.trim() ? v.trim() : null)
 
 /** Shared by the /contacts detail panel and the call drawer's Contact panel.
- *  RLS scopes the update to the caller's org — no explicit org check needed. */
+ *  Scoped to the ACTIVE org explicitly: RLS admits every workspace the caller
+ *  belongs to, so it is defence in depth here, not the boundary. */
 export async function updateContactAction(id: string, patch: ContactPatch): Promise<{ error?: string }> {
+  const org = await activeOrg()
+  if (!org) return { error: 'No active workspace' }
   const db = await userClient()
   const clean: ContactPatch = {}
   if ('first_name' in patch) clean.first_name = empty(patch.first_name)
@@ -24,8 +27,9 @@ export async function updateContactAction(id: string, patch: ContactPatch): Prom
   if ('external_id' in patch) clean.external_id = empty(patch.external_id)
   if ('notes' in patch) clean.notes = empty(patch.notes)
   if ('dnc' in patch) clean.dnc = !!patch.dnc
-  const { error } = await db.from('contacts').update(clean).eq('id', id)
+  const { data, error } = await db.from('contacts').update(clean).eq('id', id).eq('org_id', org.orgId).select('id')
   if (error) return { error: error.message }
+  if (!data?.length) return { error: 'Contact not found.' }
   revalidatePath('/contacts')
   revalidatePath('/calls')
   return {}
@@ -83,11 +87,14 @@ export interface RelatedCall {
 }
 
 export async function getContactCallsAction(contactId: string): Promise<RelatedCall[]> {
+  const org = await activeOrg()
+  if (!org) return []
   const db = await userClient()
   const { data } = await db
     .from('calls')
     .select('id, started_at, direction, outcome, from_e164, to_e164')
     .eq('contact_id', contactId)
+    .eq('org_id', org.orgId)
     .order('started_at', { ascending: false })
     .limit(50)
   return (data ?? []) as RelatedCall[]

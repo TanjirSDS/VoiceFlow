@@ -106,22 +106,38 @@ export async function createWebhookEndpointAction(input: {
   }
 }
 
+// The org filter on the next two is the boundary, not RLS: is_org_member() spans
+// every workspace the caller belongs to, so an id-only statement reaches rows in
+// workspaces this request never authorized (same defect as Phase 24's api_keys).
+// A zero-row result is reported, never silently treated as success.
 export async function setWebhookEndpointEnabledAction(id: string, enabled: boolean): Promise<{ error?: string }> {
   const db = await userClient()
-  await requireOrg()
+  const org = await requireOrg()
   // Kill switch (rule 3 spirit): attemptDelivery re-checks `enabled` per attempt,
   // so flipping this off stops in-flight and future deliveries immediately.
-  const { error } = await db.from('webhook_endpoints').update({ enabled }).eq('id', id)
+  const { data, error } = await db
+    .from('webhook_endpoints')
+    .update({ enabled })
+    .eq('id', id)
+    .eq('org_id', org.orgId)
+    .select('id')
   if (error) return { error: error.message }
+  if (!data?.length) return { error: 'Endpoint not found.' }
   revalidatePath('/integrations')
   return {}
 }
 
 export async function deleteWebhookEndpointAction(id: string): Promise<{ error?: string }> {
   const db = await userClient()
-  await requireOrg()
-  const { error } = await db.from('webhook_endpoints').delete().eq('id', id)
+  const org = await requireOrg()
+  const { data, error } = await db
+    .from('webhook_endpoints')
+    .delete()
+    .eq('id', id)
+    .eq('org_id', org.orgId)
+    .select('id')
   if (error) return { error: error.message }
+  if (!data?.length) return { error: 'Endpoint not found.' }
   revalidatePath('/integrations')
   return {}
 }

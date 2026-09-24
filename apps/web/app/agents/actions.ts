@@ -28,8 +28,11 @@ import { activeOrg, type ActiveOrg } from '../../lib/org'
 import { userClient } from '../../lib/db'
 import { currentUser } from '../../lib/auth'
 
-// Phase 4: all DB access here goes through the RLS-scoped user client, so a
-// member can only ever touch their own org's rows — no manual org checks.
+// Phase 4: all DB access here goes through the RLS-scoped user client. RLS alone
+// is NOT the boundary, though: is_org_member() admits every workspace the caller
+// belongs to, while these actions authorize (and plan-gate) only the ACTIVE one.
+// So every agent is loaded through getAgentRow(), which pins it to the active
+// org, before anything reads or writes it.
 
 async function requireOrg(): Promise<ActiveOrg> {
   const org = await activeOrg()
@@ -63,8 +66,10 @@ async function insertVersion(db: Db, agentId: string, config: StoredAgentConfig)
 }
 
 async function getAgentRow(db: Db, id: string) {
-  const { data, error } = await db.from('agents').select('*').eq('id', id).single()
+  const org = await requireOrg()
+  const { data, error } = await db.from('agents').select('*').eq('id', id).eq('org_id', org.orgId).maybeSingle()
   if (error) throw new Error(error.message)
+  if (!data) throw new Error('Agent not found')
   return data
 }
 
@@ -440,10 +445,13 @@ export async function applySuggestionsAction(agentId: string, formData: FormData
 
 export async function dismissSuggestionAction(agentId: string, suggestionId: string) {
   const db = await userClient()
+  const agent = await getAgentRow(db, agentId)
   const { error } = await db
     .from('agent_suggestions')
     .update({ status: 'dismissed' })
     .eq('id', suggestionId)
+    .eq('agent_id', agent.id)
+    .eq('org_id', agent.org_id)
     .eq('status', 'pending')
   if (error) throw new Error(error.message)
   revalidatePath(`/agents/${agentId}/learning`)
@@ -587,6 +595,11 @@ export async function setShareAction(agentId: string, enabled: boolean) {
 /** Inline-editable version label (Phase 11). Empty clears it. */
 export async function renameVersionAction(agentId: string, version: number, label: string) {
   const db = await userClient()
+  try {
+    await getAgentRow(db, agentId)
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) }
+  }
   const { error } = await db
     .from('agent_config_versions')
     .update({ label: label.trim() || null })
@@ -599,8 +612,9 @@ export async function renameVersionAction(agentId: string, version: number, labe
 
 // ── Phase 16: simulation testing ─────────────────────────────────────────────
 
-/** Create or update a simulation test case. RLS scopes writes to the member's
- *  org; org_id is stamped from the active org (agent_id is the ownership check). */
+/** Create or update a simulation test case. org_id is stamped from the active
+ *  org, and getAgentRow() proves the agent is in that same org — otherwise a
+ *  row could claim one workspace while pointing at another's agent. */
 export async function saveTestCaseAction(
   agentId: string,
   input: { id?: string; name: string; userPrompt: string; successCriteria: string }
@@ -608,6 +622,7 @@ export async function saveTestCaseAction(
   const db = await userClient()
   try {
     const org = await requireOrg()
+    await getAgentRow(db, agentId)
     const email = await currentUserEmail()
     const name = input.name.trim()
     const userPrompt = input.userPrompt.trim()
@@ -634,6 +649,11 @@ export async function saveTestCaseAction(
 
 export async function deleteTestCaseAction(agentId: string, id: string) {
   const db = await userClient()
+  try {
+    await getAgentRow(db, agentId)
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) }
+  }
   const { error } = await db.from('agent_test_cases').delete().eq('id', id).eq('agent_id', agentId)
   if (error) return { error: error.message }
   revalidatePath(`/agents/${agentId}`)
@@ -645,7 +665,7 @@ export async function deleteTestCaseAction(agentId: string, id: string) {
 export async function runSimulationAction(agentId: string, id: string, startingNodeId?: string) {
   const db = await userClient()
   try {
-    const agent = await getAgentRow(db, agentId) // RLS: throws for another org's id
+    const agent = await getAgentRow(db, agentId) // throws for any id outside the active org
     if (!agent.provider_agent_id) throw new Error('This agent has not been created at the provider yet')
     const { data: tc, error } = await db
       .from('agent_test_cases')

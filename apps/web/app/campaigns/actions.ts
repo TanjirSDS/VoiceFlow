@@ -35,9 +35,17 @@ export async function createCampaignAction(input: {
       throw new Error('Spend cap must be a positive amount')
     }
 
-    // RLS scope: a foreign agent id must 404 here — the runner dials with the
-    // service role, so this is the gate that keeps campaigns on the org's own agents.
-    const { data: agent } = await db.from('agents').select('id').eq('id', input.agentId).maybeSingle()
+    // A foreign agent id must 404 here — the runner dials with the service role,
+    // so this is the gate that keeps campaigns on the org's own agents. It filters
+    // on the active org explicitly: RLS alone admits an agent from ANY workspace
+    // the caller belongs to, which would put a campaign in this org dialing
+    // through another org's agent.
+    const { data: agent } = await db
+      .from('agents')
+      .select('id')
+      .eq('id', input.agentId)
+      .eq('org_id', org.orgId)
+      .maybeSingle()
     if (!agent) throw new Error('Agent not found')
 
     const { contacts } = dedupeContacts(input.contacts) // re-normalize server-side
@@ -92,18 +100,33 @@ export async function createCampaignAction(input: {
   redirect(`/campaigns/${id}`)
 }
 
+// Every campaign statement below filters on the active org as well as the id:
+// RLS admits every workspace the caller belongs to, so it is not the boundary.
+async function requireOrgId(): Promise<string> {
+  const org = await activeOrg()
+  if (!org) throw new Error('No active workspace')
+  return org.orgId
+}
+
 /** Draft/paused → running, and kick the Inngest loop. */
 export async function startCampaignAction(id: string) {
+  const orgId = await requireOrgId()
   const db = await userClient()
-  const { data: prev, error } = await db.from('campaigns').select('status').eq('id', id).single()
+  const { data: prev, error } = await db
+    .from('campaigns')
+    .select('status')
+    .eq('id', id)
+    .eq('org_id', orgId)
+    .maybeSingle()
   if (error) throw new Error(error.message)
+  if (!prev) throw new Error('Campaign not found')
   if (prev.status !== 'draft' && prev.status !== 'paused') {
     throw new Error(`Cannot start a ${prev.status} campaign`)
   }
-  const { error: updErr } = await db.from('campaigns').update({ status: 'running' }).eq('id', id)
+  const { error: updErr } = await db.from('campaigns').update({ status: 'running' }).eq('id', id).eq('org_id', orgId)
   if (updErr) throw new Error(updErr.message)
   if (!(await emit('campaign/run', { campaignId: id }))) {
-    await db.from('campaigns').update({ status: prev.status }).eq('id', id)
+    await db.from('campaigns').update({ status: prev.status }).eq('id', id).eq('org_id', orgId)
     throw new Error('Background runner unavailable — campaign not started')
   }
   revalidatePath(`/campaigns/${id}`)
@@ -111,19 +134,27 @@ export async function startCampaignAction(id: string) {
 
 /** The runner sees the flip at its next tick (≤30s) and stops dialing. */
 export async function pauseCampaignAction(id: string) {
+  const orgId = await requireOrgId()
   const db = await userClient()
-  const { error } = await db.from('campaigns').update({ status: 'paused' }).eq('id', id).eq('status', 'running')
+  const { error } = await db
+    .from('campaigns')
+    .update({ status: 'paused' })
+    .eq('id', id)
+    .eq('org_id', orgId)
+    .eq('status', 'running')
   if (error) throw new Error(error.message)
   revalidatePath(`/campaigns/${id}`)
 }
 
 /** Kill switch (rule 3): terminal, no resume. Dialing stops within one tick. */
 export async function killCampaignAction(id: string) {
+  const orgId = await requireOrgId()
   const db = await userClient()
   const { error } = await db
     .from('campaigns')
     .update({ status: 'killed' })
     .eq('id', id)
+    .eq('org_id', orgId)
     .in('status', ['draft', 'running', 'paused'])
   if (error) throw new Error(error.message)
   revalidatePath(`/campaigns/${id}`)
