@@ -31,6 +31,7 @@ import { reconcileYesterday } from './reconcile'
 import { stripeClient } from './stripe'
 import { evaluateAlert, type AlertRow } from './alerts'
 import { poolConcurrencyWatch } from './jobs/concurrency-pool'
+import { crmJobs } from './jobs/crm-sync'
 import { recordingJobs } from './jobs/recording-archive'
 import { attemptDelivery } from './webhooks-out'
 
@@ -423,6 +424,7 @@ export const functions = [
   alertEvaluate,
   poolConcurrencyWatch,
   ...recordingJobs,
+  ...crmJobs,
   welcomeEmail,
   usageWarnEmail,
   usageCappedEmail,

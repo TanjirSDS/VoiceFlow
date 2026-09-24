@@ -7,8 +7,7 @@ import { listEventTypes } from '../../lib/calcom'
 import { activeOrg, type ActiveOrg } from '../../lib/org'
 import { userClient } from '../../lib/db'
 import { currentUser } from '../../lib/auth'
-
-const CRM_PROVIDERS = ['hubspot', 'salesforce'] as const
+import { isCrmProvider } from '../../lib/crm/types'
 
 async function requireOrg(): Promise<ActiveOrg> {
   const org = await activeOrg()
@@ -125,21 +124,87 @@ export async function deleteWebhookEndpointAction(id: string): Promise<{ error?:
   return {}
 }
 
-// ── CRM waitlist (cheapest thing: a jsonb list on orgs) ─────────────────────
-export async function registerInterestAction(provider: string): Promise<{ error?: string }> {
+// ── CRM connections (Phase 25) ──────────────────────────────────────────────
+//
+// Connecting is a redirect, not a server action — OAuth needs a top-level
+// navigation to the provider, so the Connect button is a plain link to
+// /api/integrations/crm/[provider]/connect. Only the teardown lives here.
+export async function disconnectCrmAction(provider: string): Promise<{ error?: string }> {
   try {
-    const org = await requireOrg()
-    if (!CRM_PROVIDERS.includes(provider as (typeof CRM_PROVIDERS)[number])) throw new Error('Unknown integration')
-    const svc = serviceClient()
-    const { data: row } = await svc.from('orgs').select('integration_interest').eq('id', org.orgId).maybeSingle()
-    const current: string[] = Array.isArray(row?.integration_interest) ? row!.integration_interest : []
-    if (current.includes(provider)) return {}
-    // orgs is member-read-only under RLS → service write, but any member may ask.
-    const { error } = await svc
-      .from('orgs')
-      .update({ integration_interest: [...current, provider] })
-      .eq('id', org.orgId)
+    const org = await requireOwner()
+    if (!isCrmProvider(provider)) throw new Error('Unknown CRM provider')
+    // org_crm_connections is RLS-on-with-no-policies, so this has to be the
+    // service client (the user's own client sees nothing there, by design).
+    //
+    // Deleting rather than flipping status to 'revoked': 'revoked' means "the
+    // provider stopped accepting us and you should reconnect", which is a
+    // prompt. A deliberate disconnect should leave no prompt behind — and it
+    // should take the sealed tokens with it.
+    const { error } = await serviceClient()
+      .from('org_crm_connections')
+      .delete()
+      .eq('org_id', org.orgId)
+      .eq('provider', provider)
     if (error) throw new Error(error.message)
+
+    // Forget the cached CRM record ids too. They point into an account we can no
+    // longer reach, and a later reconnect — possibly to a different CRM account
+    // — must not log calls against ids from the old one.
+    const { data: contacts } = await serviceClient()
+      .from('contacts')
+      .select('id, crm_ids')
+      .eq('org_id', org.orgId)
+      .not('crm_ids', 'eq', '{}')
+    for (const c of contacts ?? []) {
+      const rest = { ...((c.crm_ids ?? {}) as Record<string, string>) }
+      if (!(provider in rest)) continue
+      delete rest[provider]
+      await serviceClient().from('contacts').update({ crm_ids: rest }).eq('id', c.id)
+    }
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) }
+  }
+  revalidatePath('/integrations')
+  return {}
+}
+
+/** Point one VoiceFlow value at a different CRM property (or clear the override). */
+export async function setCrmFieldMappingAction(input: {
+  provider: string
+  targetObject: 'contact' | 'call'
+  sourceField: string
+  targetProperty: string
+}): Promise<{ error?: string }> {
+  try {
+    const org = await requireOwner()
+    if (!isCrmProvider(input.provider)) throw new Error('Unknown CRM provider')
+    const db = await userClient()
+    const targetProperty = input.targetProperty.trim()
+
+    if (!targetProperty) {
+      // Empty = fall back to the built-in default, which is what DELETE means
+      // here; storing '' would map the value onto a property with no name.
+      const { error } = await db
+        .from('org_crm_field_mappings')
+        .delete()
+        .eq('org_id', org.orgId)
+        .eq('provider', input.provider)
+        .eq('target_object', input.targetObject)
+        .eq('source_field', input.sourceField)
+      if (error) throw new Error(error.message)
+    } else {
+      const { error } = await db.from('org_crm_field_mappings').upsert(
+        {
+          org_id: org.orgId,
+          provider: input.provider,
+          target_object: input.targetObject,
+          source_field: input.sourceField,
+          target_property: targetProperty,
+        },
+        { onConflict: 'org_id,provider,target_object,source_field' }
+      )
+      if (error) throw new Error(error.message)
+    }
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) }
   }

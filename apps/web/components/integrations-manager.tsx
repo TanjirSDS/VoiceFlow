@@ -7,10 +7,11 @@ import {
   createWebhookEndpointAction,
   deleteWebhookEndpointAction,
   disconnectCalcomAction,
-  registerInterestAction,
+  disconnectCrmAction,
   setWebhookEndpointEnabledAction,
 } from '../app/integrations/actions'
-import { Button } from './ui/button'
+import { cn } from '../lib/utils'
+import { Button, buttonVariants } from './ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
@@ -32,25 +33,37 @@ const STATUS_DOT: Record<string, string> = {
   failed: 'bg-amber-500',
   dead: 'bg-destructive',
 }
-const CRM = [
-  { id: 'hubspot', name: 'HubSpot', desc: 'Sync contacts and log calls to HubSpot CRM.' },
-  { id: 'salesforce', name: 'Salesforce', desc: 'Sync contacts and log calls to Salesforce.' },
-]
+const CRM_DESC: Record<string, string> = {
+  hubspot: 'Upsert the caller as a contact and log every call as an activity with its summary and outcome.',
+  pipedrive: 'Upsert the caller as a person and log every call as a completed activity with its summary and outcome.',
+}
+
+export interface CrmRow {
+  id: string
+  name: string
+  /** Whether this deployment has OAuth credentials for the provider at all. */
+  configured: boolean
+  status: 'active' | 'revoked' | null
+  statusDetail: string | null
+  updatedAt: string | null
+}
 
 export function IntegrationsManager({
   tab,
   isOwner,
   calcom,
   endpoints,
-  interest,
+  crm,
+  flash,
 }: {
   tab: 'connected' | 'available'
   isOwner: boolean
   calcom: { connected: boolean; eventTypeId: number | null }
   endpoints: EndpointRow[]
-  interest: string[]
+  crm: CrmRow[]
+  flash?: { connected?: string; error?: string }
 }) {
-  if (tab === 'available') return <AvailableTab interest={interest} />
+  if (tab === 'available') return <CrmTab crm={crm} isOwner={isOwner} flash={flash} />
   return (
     <div className="space-y-8">
       <CalcomCard isOwner={isOwner} calcom={calcom} />
@@ -295,37 +308,104 @@ function WebhooksSection({ endpoints }: { endpoints: EndpointRow[] }) {
   )
 }
 
-function AvailableTab({ interest }: { interest: string[] }) {
+function CrmTab({
+  crm,
+  isOwner,
+  flash,
+}: {
+  crm: CrmRow[]
+  isOwner: boolean
+  flash?: { connected?: string; error?: string }
+}) {
   const [pending, startTransition] = useTransition()
-  const [joined, setJoined] = useState<string[]>(interest)
 
-  function register(provider: string) {
-    setJoined((j) => (j.includes(provider) ? j : [...j, provider])) // optimistic
+  function disconnect(row: CrmRow) {
+    if (!confirm(`Disconnect ${row.name}? Calls will stop syncing until you reconnect.`)) return
     startTransition(async () => {
-      const res = await registerInterestAction(provider)
-      if (res?.error) {
-        setJoined((j) => j.filter((p) => p !== provider))
-        toast.error(res.error)
-      } else toast.success('Thanks — we\'ll be in touch when it\'s ready.')
+      const res = await disconnectCrmAction(row.id)
+      if (res?.error) toast.error(res.error)
+      else toast.success(`${row.name} disconnected`)
     })
   }
 
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
-      {CRM.map((c) => {
-        const done = joined.includes(c.id)
-        return (
+    <div className="space-y-4">
+      {/* The OAuth callback redirects back here with its verdict; without this
+          the user lands on an unchanged page and cannot tell what happened. */}
+      {flash?.connected && (
+        <p className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm">
+          Connected to {flash.connected}. New calls will sync from now on.
+        </p>
+      )}
+      {flash?.error && (
+        <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm">
+          Could not connect: {flash.error}
+        </p>
+      )}
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        {crm.map((c) => (
           <div key={c.id} className="flex items-start justify-between gap-4 rounded-xl border bg-card p-5">
-            <div>
-              <p className="font-medium">{c.name}</p>
-              <p className="mt-1 text-sm text-muted-foreground">{c.desc}</p>
+            <div className="min-w-0">
+              <p className="flex items-center gap-2 font-medium">
+                {c.name}
+                {c.status === 'active' && (
+                  <span className="inline-block size-2 rounded-full bg-emerald-500" aria-label="connected" />
+                )}
+                {c.status === 'revoked' && (
+                  <span className="inline-block size-2 rounded-full bg-amber-500" aria-label="needs reconnecting" />
+                )}
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">{CRM_DESC[c.id]}</p>
+              {/* A revoked connection is an ordinary end state (a Pipedrive
+                  refresh token unused for 60 days does it), so it explains
+                  itself rather than just going quiet. */}
+              {c.status === 'revoked' && (
+                <p className="mt-2 text-xs text-amber-600 dark:text-amber-500">
+                  Disconnected by the provider — reconnect to resume syncing.
+                  {c.statusDetail ? ` (${c.statusDetail.slice(0, 120)})` : ''}
+                </p>
+              )}
+              {!c.configured && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Not available on this deployment — no {c.name} app credentials are configured.
+                </p>
+              )}
             </div>
-            <Button variant="outline" size="sm" disabled={done || pending} onClick={() => register(c.id)}>
-              {done ? 'Interested ✓' : 'Register interest'}
-            </Button>
+
+            <div className="shrink-0">
+              {!c.configured ? (
+                <Button variant="outline" size="sm" disabled>
+                  Unavailable
+                </Button>
+              ) : c.status === 'active' ? (
+                <Button variant="outline" size="sm" disabled={!isOwner || pending} onClick={() => disconnect(c)}>
+                  Disconnect
+                </Button>
+              ) : (
+                // A link, not an action: OAuth needs a top-level navigation to
+                // the provider, which fetch() from a server action cannot do.
+                <a
+                  href={isOwner ? `/api/integrations/crm/${c.id}/connect` : undefined}
+                  aria-disabled={!isOwner}
+                  className={cn(
+                    buttonVariants({ variant: 'outline', size: 'sm' }),
+                    !isOwner && 'pointer-events-none opacity-50'
+                  )}
+                >
+                  {c.status === 'revoked' ? 'Reconnect' : 'Connect'}
+                </a>
+              )}
+            </div>
           </div>
-        )
-      })}
+        ))}
+      </div>
+
+      {!isOwner && (
+        <p className="text-xs text-muted-foreground">
+          Only the workspace owner can connect or disconnect a CRM.
+        </p>
+      )}
     </div>
   )
 }

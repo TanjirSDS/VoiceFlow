@@ -60,6 +60,16 @@ const schema = z.object({
   /** Optional: shared secret agent tools send to /api/tools/* (Phase 7).
    *  Without it the tool route rejects everything and Cal.com connect errors. */
   AGENT_TOOLS_SECRET: z.string().min(16).optional(),
+  /** Optional: CRM sync (Phase 25). A provider is offered on /integrations only
+   *  when BOTH its id and secret are set; absent → the card reads "not
+   *  configured" instead of opening a consent screen that cannot complete.
+   *  Redirect URI to register with each provider:
+   *    {APP_URL}/api/integrations/crm/hubspot/callback
+   *    {APP_URL}/api/integrations/crm/pipedrive/callback */
+  HUBSPOT_CLIENT_ID: z.string().min(1).optional(),
+  HUBSPOT_CLIENT_SECRET: z.string().min(1).optional(),
+  PIPEDRIVE_CLIENT_ID: z.string().min(1).optional(),
+  PIPEDRIVE_CLIENT_SECRET: z.string().min(1).optional(),
 })
 
 export type Env = z.infer<typeof schema>
