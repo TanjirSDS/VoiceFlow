@@ -1,4 +1,5 @@
 'use client'
+import { useProductName } from './branding-provider'
 
 import type { AgentType } from '@voiceflow/engine/templates'
 import Link from 'next/link'
@@ -75,6 +76,7 @@ export function AgentsTable({
   maxAgents: number
 }) {
   const [query, setQuery] = useState('')
+  const productName = useProductName()
   const [deleteTarget, setDeleteTarget] = useState<AgentRow | null>(null)
   const [convertTarget, setConvertTarget] = useState<AgentRow | null>(null)
   const [pending, startTransition] = useTransition()
@@ -258,7 +260,7 @@ export function AgentsTable({
           <DialogHeader>
             <DialogTitle>Delete agent</DialogTitle>
             <DialogDescription>
-              This deletes “{deleteTarget?.name}” from VoiceFlow and removes it at the provider. This
+              This deletes “{deleteTarget?.name}” from {productName} and removes it at the provider. This
               can&apos;t be undone.
             </DialogDescription>
           </DialogHeader>

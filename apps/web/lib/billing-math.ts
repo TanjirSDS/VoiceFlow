@@ -3,6 +3,8 @@
 export const ANNUAL_DISCOUNT = 0.15
 export const OVERAGE_CENTS_PER_MIN = 35 // $0.35/min
 export const OVERAGE_METER_EVENT = 'overage_minutes'
+/** Phase 27: pooled minutes past an agency's allowance, billed to the PARENT. */
+export const AGENCY_METER_EVENT = 'agency_minutes'
 export const DUNNING_GRACE_DAYS = 7
 
 export function annualPriceCents(monthlyCents: number): number {

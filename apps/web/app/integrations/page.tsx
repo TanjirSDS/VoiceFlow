@@ -6,6 +6,7 @@ import { IntegrationsManager, type CrmRow, type EndpointRow } from '../../compon
 import { configuredProviders, OAUTH_SPECS } from '../../lib/crm/oauth'
 import { CRM_PROVIDERS } from '../../lib/crm/types'
 import { activeOrg } from '../../lib/org'
+import { currentBranding } from '../../lib/branding'
 import { cn } from '../../lib/utils'
 import { userClient } from '../../lib/db'
 import { listApiKeys } from '../../lib/api-keys-db'
@@ -29,6 +30,7 @@ export default async function IntegrationsPage({
   // Resolved first: the api_keys read below must be scoped to THIS workspace.
   // RLS only narrows to orgs the viewer is a member of, which is wider.
   const org = await activeOrg()
+  const branding = await currentBranding()
 
   const [{ data: orgRow }, { data: endpointRows }, { data: deliveries }, keys] = await Promise.all([
     // secret is never selected here — reveal-once at creation only.
@@ -115,7 +117,7 @@ export default async function IntegrationsPage({
         org?.plan.apiEnabled ? (
           <ApiKeysManager keys={apiKeys} isOwner={org?.role === 'owner'} />
         ) : (
-          <ApiUpsell />
+          <ApiUpsell productName={branding.productName} />
         )
       ) : (
         <IntegrationsManager
@@ -136,7 +138,7 @@ export default async function IntegrationsPage({
 
 /** Shown to Starter/Growth workspaces. Mirrors the /knowledge and /qa upsells;
  *  createApiKeyAction re-checks the plan, so this is UX, not the gate. */
-function ApiUpsell() {
+function ApiUpsell({ productName }: { productName: string }) {
   return (
     <div className="mx-auto max-w-xl">
       <Card className="overflow-hidden">
@@ -146,7 +148,7 @@ function ApiUpsell() {
           </span>
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider text-brand">Pro feature</div>
-            <h2 className="mt-1 text-xl font-semibold tracking-tight">Build on the VoiceFlow API</h2>
+            <h2 className="mt-1 text-xl font-semibold tracking-tight">Build on the {productName} API</h2>
           </div>
         </div>
         <CardContent className="space-y-5 p-8 text-sm text-muted-foreground">

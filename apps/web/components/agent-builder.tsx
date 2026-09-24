@@ -1,4 +1,5 @@
 'use client'
+import { useProductName } from './branding-provider'
 
 // The agent builder (Phase 11): freeform-first. The system-prompt textarea is the
 // source of truth; Save = one engine.updateAgent + one new version row. Owns the
@@ -139,6 +140,7 @@ export function AgentBuilder({
   /** Org KB docs for node-level attach on flow agents (Phase 18). */
   flowKbDocs?: WorkflowKb[]
 }) {
+  const productName = useProductName()
   const isCustom = agentType === 'custom_llm'
   const isFlow = agentType === 'flow'
 
@@ -261,7 +263,7 @@ export function AgentBuilder({
       {/* Metadata strip — hidden for flow agents to give the full-bleed canvas the room. */}
       {!isFlow && (
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border bg-card px-4 py-2.5 text-xs">
-          <CopyField label="VoiceFlow ID" value={agentId} />
+          <CopyField label={`${productName} ID`} value={agentId} />
           <CopyField label="Provider ID" value={providerAgentId ?? undefined} />
           <span className="text-muted-foreground">
             <span className="font-medium text-foreground">${(rate.includedCentsPerMin / 100).toFixed(2)}/min</span>{' '}

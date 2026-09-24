@@ -9,7 +9,7 @@ export const ACTIVE_ORG_COOKIE = 'active-org'
 
 // Shared select for a membership row + its org + plan (used by activeOrg).
 const MEMBER_ORG_SELECT =
-  'org_id, role, orgs(name, minutes_cap, overage_policy, payment_failed_at, pending_plan_id, plans!orgs_plan_id_fkey(id, name, max_agents, max_numbers, max_concurrent, kb_enabled, adaptive_enabled, qa_enabled, api_enabled))'
+  'org_id, role, orgs(name, minutes_cap, overage_policy, payment_failed_at, pending_plan_id, parent_org_id, plans!orgs_plan_id_fkey(id, name, max_agents, max_numbers, max_concurrent, kb_enabled, adaptive_enabled, qa_enabled, api_enabled, agency_enabled, agency_rate_cents_per_min, max_sub_orgs))'
 
 export interface ActiveOrg {
   orgId: string
@@ -21,6 +21,9 @@ export interface ActiveOrg {
   paymentFailedAt: string | null
   /** Downgrade waiting for the next billing period. */
   pendingPlanId: string | null
+  /** Phase 27: the reseller org above this one, or null for a direct customer.
+   *  Non-null means this org is white-labelled and does not bill for itself. */
+  parentOrgId: string | null
   plan: {
     id: string
     name: string
@@ -34,6 +37,12 @@ export interface ActiveOrg {
     maxConcurrent: number
     /** Phase 24: gates the /api/v1 public API and its key management. Pro only. */
     apiEnabled: boolean
+    /** Phase 27: gates the whole agency tier — sub-orgs, branding, rollup. */
+    agencyEnabled: boolean
+    /** Phase 27: what the agency pays per billable minute past the pooled allowance. */
+    agencyRateCentsPerMin: number
+    /** Phase 27: ceiling on sub-orgs (rule 5 — nothing is unlimited). */
+    maxSubOrgs: number
   }
 }
 
@@ -50,7 +59,7 @@ export const activeOrg = cache(async (): Promise<ActiveOrg | null> => {
     const { data: org } = await db
       .from('orgs')
       .select(
-        'id, name, minutes_cap, overage_policy, payment_failed_at, pending_plan_id, plans!orgs_plan_id_fkey(id, name, max_agents, max_numbers, max_concurrent, kb_enabled, adaptive_enabled, qa_enabled, api_enabled)'
+        'id, name, minutes_cap, overage_policy, payment_failed_at, pending_plan_id, parent_org_id, plans!orgs_plan_id_fkey(id, name, max_agents, max_numbers, max_concurrent, kb_enabled, adaptive_enabled, qa_enabled, api_enabled, agency_enabled, agency_rate_cents_per_min, max_sub_orgs)'
       )
       .order('created_at', { ascending: true })
       .limit(1)
@@ -66,6 +75,9 @@ export const activeOrg = cache(async (): Promise<ActiveOrg | null> => {
       adaptive_enabled: boolean
       qa_enabled: boolean
       api_enabled: boolean
+      agency_enabled: boolean
+      agency_rate_cents_per_min: number
+      max_sub_orgs: number
     }
     return {
       orgId: org.id,
@@ -75,6 +87,7 @@ export const activeOrg = cache(async (): Promise<ActiveOrg | null> => {
       overagePolicy: org.overage_policy,
       paymentFailedAt: org.payment_failed_at,
       pendingPlanId: org.pending_plan_id,
+      parentOrgId: org.parent_org_id,
       plan: {
         id: plan.id,
         name: plan.name,
@@ -85,6 +98,9 @@ export const activeOrg = cache(async (): Promise<ActiveOrg | null> => {
         qaEnabled: plan.qa_enabled,
         maxConcurrent: plan.max_concurrent,
         apiEnabled: plan.api_enabled,
+        agencyEnabled: plan.agency_enabled,
+        agencyRateCentsPerMin: plan.agency_rate_cents_per_min,
+        maxSubOrgs: plan.max_sub_orgs,
       },
     }
   }
@@ -103,7 +119,7 @@ export const activeOrg = cache(async (): Promise<ActiveOrg | null> => {
       const { data: org } = await db
         .from('orgs')
         .select(
-          'id, name, minutes_cap, overage_policy, payment_failed_at, pending_plan_id, plans!orgs_plan_id_fkey(id, name, max_agents, max_numbers, max_concurrent, kb_enabled, adaptive_enabled, qa_enabled, api_enabled)'
+          'id, name, minutes_cap, overage_policy, payment_failed_at, pending_plan_id, parent_org_id, plans!orgs_plan_id_fkey(id, name, max_agents, max_numbers, max_concurrent, kb_enabled, adaptive_enabled, qa_enabled, api_enabled, agency_enabled, agency_rate_cents_per_min, max_sub_orgs)'
         )
         .eq('id', viewAs)
         .maybeSingle()
@@ -118,6 +134,9 @@ export const activeOrg = cache(async (): Promise<ActiveOrg | null> => {
           adaptive_enabled: boolean
           qa_enabled: boolean
           api_enabled: boolean
+          agency_enabled: boolean
+          agency_rate_cents_per_min: number
+          max_sub_orgs: number
         }
         return {
           orgId: org.id,
@@ -127,6 +146,7 @@ export const activeOrg = cache(async (): Promise<ActiveOrg | null> => {
           overagePolicy: org.overage_policy,
           paymentFailedAt: org.payment_failed_at,
           pendingPlanId: org.pending_plan_id,
+          parentOrgId: org.parent_org_id,
           plan: {
             id: plan.id,
             name: plan.name,
@@ -137,6 +157,9 @@ export const activeOrg = cache(async (): Promise<ActiveOrg | null> => {
             qaEnabled: plan.qa_enabled,
             maxConcurrent: plan.max_concurrent,
             apiEnabled: plan.api_enabled,
+            agencyEnabled: plan.agency_enabled,
+            agencyRateCentsPerMin: plan.agency_rate_cents_per_min,
+            maxSubOrgs: plan.max_sub_orgs,
           },
         }
       }
@@ -172,6 +195,7 @@ export const activeOrg = cache(async (): Promise<ActiveOrg | null> => {
     overagePolicy: org.overage_policy,
     paymentFailedAt: org.payment_failed_at,
     pendingPlanId: org.pending_plan_id,
+    parentOrgId: org.parent_org_id,
     plan: {
       id: org.plans.id,
       name: org.plans.name,
@@ -182,6 +206,9 @@ export const activeOrg = cache(async (): Promise<ActiveOrg | null> => {
       qaEnabled: org.plans.qa_enabled,
       maxConcurrent: org.plans.max_concurrent,
       apiEnabled: org.plans.api_enabled,
+      agencyEnabled: org.plans.agency_enabled,
+      agencyRateCentsPerMin: org.plans.agency_rate_cents_per_min,
+      maxSubOrgs: org.plans.max_sub_orgs,
     },
   }
 })

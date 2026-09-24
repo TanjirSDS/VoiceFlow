@@ -1616,3 +1616,171 @@ deployment needs `phone_numbers.provider` — that is the next migration, not th
   array form on update-phone-number, the `general_tools` custom-tool mapping (system params
   are sent as `{{call_id}}`-style query params — marked VERIFY in the code), and whether
   `/v3/list-calls` returns a bare array or `{calls: []}` (the adapter accepts both).
+
+### Phase 27 white-label / agency tier (2026-09-24)
+
+Build plan P8's "agency/white-label tier". A reseller runs a workspace per client,
+puts its own name/logo/colour on every screen and email those clients see, and
+receives ONE invoice for all of them from a shared pool of minutes.
+
+**0022.** `orgs.parent_org_id` (ON DELETE RESTRICT — a parent holds other people's
+phone numbers), `org_branding` (one row per org), `agency_periods` (the rollup
+ledger), role `'reseller'`, `plans.{agency_enabled, agency_rate_cents_per_min,
+max_sub_orgs, stripe_agency_price_id}`, and a new `agency` plan ($3,999 / 10,000
+pooled minutes — the RFC §4 ladder at $0.13/min gives ~67% margin, deliberately
+below the direct plans' 78–80% because the agency buys wholesale and does its own
+support). NOT `agency_enabled` on `pro`: an existing Pro customer must not silently
+acquire the ability to create orgs.
+
+- **ONE LEVEL, trigger-enforced.** `orgs_one_level_deep()` refuses all three ways to
+  build a grandchild (attach to a sub-org / demote a parent / self-reference). A
+  check constraint cannot see another row, hence a trigger. Depth would make every
+  rule in the phase ("a reseller sees its children", "usage rolls up to the parent")
+  silently wrong rather than loudly broken — a grandchild's minutes would reach
+  nobody's invoice.
+- **THE ONE NEW REACH: `is_parent_reseller()`.** One arm added to `is_org_member()`,
+  so all ~24 policies inherit it at once (the 0020 pattern). It starts at the CHILD
+  and looks up exactly one `parent_org_id` — no recursive term, so no path exists
+  sideways to a sibling or up to a parent. **Gated on the parent's plan flag**, so
+  entitlement and reach cannot disagree: a lapsed agency's reach NARROWS, which is
+  the safe direction. Fails closed for a bearer key for free (`auth.uid()` is NULL,
+  so the `org_members` join matches nothing).
+- **Branding writes are stricter than every other tenant table.** `branding_write` /
+  `branding_update` require `is_org_owner(org) AND not-a-sub-org`, OR
+  `is_parent_reseller(org)`. A white-labelled client renaming the product out from
+  under the agency reselling to them is the one edit this table must refuse.
+- **TWO columns are withheld by GRANT, not policy** — both assert a fact only WE can
+  establish: `email_sender_verified` (this tenant controls a sending domain) and
+  `custom_domain_verified_at` (…controls a hostname). Either one writable by a member
+  is a spoofing primitive, not a feature.
+
+**Deriving a palette from ONE hex (lib/brand-palette.ts).** A reseller gives a single
+colour; brand/brand-strong/brand-soft/brand-softer/primary/primary-foreground/ring
+are computed for BOTH themes. A form with twelve colour pickers reliably produces an
+unreadable product with someone else's name on it. Work in OKLab (sRGB lightness is
+not perceptual, so a ratio search there lands differently for every hue); the one
+primitive is "hold hue and chroma, move LIGHTNESS until this pair clears its WCAG
+ratio", bisected so it returns the smallest correction. Gamut clipping reduces chroma
+rather than clamping channels (clamping shifts the HUE).
+- WHAT FOUGHT BACK: the strict light surface is the PAGE (#f4f6f9), not the white
+  card — for dark text the darker background is the harder one. I had it backwards;
+  caught by a 24-hue sweep at 330° and 345°, not by looking at indigo. 440 assertions
+  over 38 colours (hostile set + full hue sweep) now hold every pair, including
+  `brand-strong` on `brand-soft`, which is exactly `::selection` in globals.css.
+
+**Injecting the palette.** A `<style>` block in `<body>`, emitted only when the org
+has a non-default colour (an unbranded customer's HTML is byte-identical to before).
+React only hoists `<style>` when it carries `precedence`; without one it renders in
+place, which puts it after the stylesheet `<link>`. That matters because Tailwind v4
+compiles `@theme` into `:root` and globals.css redefines the same names under
+`.dark` — EQUAL specificity, so order alone decides. Both scopes are emitted or a
+branded tenant gets light-mode colours on a dark page. VERIFIED on a real rendered
+page, not assumed: link at byte 179, injected style at byte 1964.
+
+**Branding resolution is FIELD BY FIELD**: own row → parent's row → platform. Per row
+would mean a reseller who renames one client's portal loses their own colour and logo
+for that client. Custom domain is the exception — never inherited, since it names one
+host. Validated on READ as well as write (`lib/branding.ts`), because the colour is
+interpolated into a `<style>` block and a row from a dump restore must still be inert.
+
+**Emails.** Every template takes a required `brand` prop, and `emailOwners`' SUBJECT
+is now a function of the brand — so a new email cannot be written unbranded without
+failing to compile. Display name is always the tenant's; the ADDRESS is theirs only
+when `email_sender_verified` (sending as an unverified domain gets spam-foldered,
+which is worse for the agency than a neutral address) — the residual leak is stated
+in the agency console rather than hidden. Logo is NOT used in email: most clients
+block images, so a text wordmark is the more reliable white-label. Proven by rendering
+all 8 templates to HTML and asserting zero "voiceflow", WITH A POSITIVE CONTROL —
+absence assertions pass trivially if the renderer returns nothing.
+
+**Logo: our own origin, raster only.** Served by `/api/branding/logo` from the Railway
+bucket rather than a tenant URL, so the CSP stays `img-src 'self'` — widening it to
+https: for every page so one reseller can host a PNG is a bad trade. That decision is
+exactly what makes SVG a stored-XSS primitive (an SVG is a document and can carry
+`<script>`, in OUR origin), so SVG is refused in the DB CHECK, the allow-list, and by
+magic-byte sniffing — the declared MIME type and filename are never consulted. The URL
+carries NO org id (resolved from session/host like the page), which makes it identical
+for every tenant — hence `cache-control: private` + `Vary: Cookie`; `public` would
+serve one agency's logo to another's customers.
+
+**Billing rolls up to ONE invoice.** Nightly, after `recompute_usage` (rule 5):
+`recompute_agency_usage()` re-derives family minutes from `usage_periods`, then the
+whole-minute delta goes to an `agency_minutes` meter keyed to the PARENT's
+`stripe_customer_id` — that keying IS the mechanism. Sub-orgs have no customer and no
+subscription; `refuseIfSubOrg()` guards checkout, portal and plan change. The pool
+does not decompose per child (whether client A's 900th minute is "included" depends on
+what every other client used), so the per-client table attributes USAGE and the pool
+prices it; splitting overage pro-rata would invent an authoritative-looking number.
+`agencyMeterDelta` reuses `overageDelta` — one definition of "a minute already billed".
+The /agency screen computes live from `usage_periods` and shows the ledger's reported
+figure separately, because a screen driven by the nightly ledger shows yesterday's
+numbers all day.
+
+**FOUR REAL DEFECTS FOUND BY THE SECURITY REVIEW, all mine, all fixed + regression-tested.**
+The first is the one that matters most — it is not a security hole, it is the
+TIER NOT WORKING, and neither the build, the unit suite nor the end-to-end
+custom-domain check could have caught it (that path runs as service_role, which
+bypasses RLS):
+
+0. **A client did not inherit its agency's branding at all.** Resolution is own
+   row → parent's row → platform, but `branding_read` was `is_org_member(org_id)`
+   and a sub-org's member is NOT a member of the parent — so the parent's row was
+   invisible to them and every client that had not been branded individually fell
+   all the way back to "VoiceFlow". Fixed with a second, deliberately narrow SELECT
+   policy (`branding_read_parent`): you may read org X's branding only if you
+   belong to an org whose parent IS X. Asserted in both halves — the policy live
+   through PostgREST, the field-by-field fold in branding-chain.test.ts.
+1. **Vanity-host takeover (HIGH).** `custom_domain` was shape-validated and never
+   verified, and branding resolves by HOST BEFORE session. An agency-plan tenant could
+   write OUR OWN hostname into it and repaint the real product, on the real domain, for
+   every visitor including other tenants' signed-in users — a phishing page hosted by
+   us, from one self-serve form write. Fixed with `custom_domain_verified_at` (withheld
+   by grant; NULL means "do not resolve") plus a write-time refusal of the platform
+   host. Proven live: an unverified claim falls back to platform branding.
+2. **Mail header injection (HIGH).** `product_name` had a length limit and no character
+   limit and is interpolated into RFC 5322 `From` and `Subject`. `Acme\r\nBcc: attacker@evil`
+   is 24 chars and passes every check; escaping quotes/backslashes does nothing about a
+   CR. Fixed with `headerSafe()` at both boundaries + a `[[:cntrl:]]` DB CHECK.
+3. **The verification stamp survived a change of hostname (HIGH)** — i.e. fix (1)
+   did not hold. `custom_domain_verified_at` certifies a HOSTNAME but lives on a
+   ROW, and nothing re-armed it, so a tenant whose first host was verified could
+   repoint `custom_domain` at any other host — a rival's, or the Railway-generated
+   one `isPlatformHost` did not cover — and keep the verification. Fixed with an
+   `org_branding_reverify` trigger, which HAS to live in the database because
+   `authenticated` deliberately holds no UPDATE on the stamp and so the app
+   physically cannot clear it. Ops therefore verifies in a SEPARATE statement from
+   the claim; setting both at once verifies nothing (the test asserts this).
+   `RESERVED_SUFFIXES` now also refuses `*.up.railway.app` and friends.
+4. **`authenticated` held table-level INSERT on `org_branding` (latent).** UPDATE was
+   revoked per column but INSERT was not, so a FIRST write could set either
+   verification flag. Not exploitable today (`saveBranding` builds from a fixed key
+   set) — closed anyway, because the next field added to `BrandingPatch` should not
+   be able to turn a column grant into a spoofing primitive.
+
+**Also found by checking rather than assuming:** `/api/branding/logo` was not in
+`PUBLIC_PREFIXES`, so a branded sign-in page — the first thing a reseller's customer
+ever sees — rendered a broken image.
+
+- The client components pulled `lib/branding.ts` into the browser bundle, which
+  transitively imports `next/headers` and fails the build; platform constants moved to
+  a dependency-free `lib/brand-constants.ts`.
+- `vitest.config.ts` gained `esbuild: { jsx: 'automatic' }` — no test had imported a
+  `.tsx` file before, so esbuild's classic-runtime default ("React is not defined")
+  had never surfaced.
+- `rls.test.ts` cleanup had to delete CHILDREN FIRST: `parent_org_id` is ON DELETE
+  RESTRICT, so deleting the set in one statement fails whenever Postgres happens to
+  reach a parent before its child.
+- VERIFIED (2026-09-24): 22 migrations + 43 live RLS/credential/agency tests on postgres:17 +
+  postgrest v16.3, exit 0; 1003 unit tests (+590); lint (provider fence intact),
+  typecheck and build clean; all 4 new routes emit; built CSS still carries every
+  custom-colour utility as `var()` in both scopes. NEGATIVE-PROBED rather than assumed
+  — widening the reseller linkage fails exactly the sideways/upward cases, dropping the
+  plan-flag gate fails the lapsed-entitlement case, re-allowing SVG fails the logo
+  allow-list case, and removing either the inheritance policy or the re-arm trigger
+  fails exactly one case each. End-to-end on a real local stack: a branded host renders 0×
+  "VoiceFlow" and 9× the tenant name, `<title>` included.
+- NOT YET VERIFIED LIVE (needs the Railway project + Stripe, like every prior phase):
+  `npm run stripe-setup` creating the agency meter/price; a real pooled invoice closing
+  with the rollup line; a real logo round-trip through a Railway bucket; a real vanity
+  host answering (needs the CNAME + certificate, and the DNS-challenge flow that sets
+  `custom_domain_verified_at` is NOT built — it is a manual platform-admin UPDATE today).

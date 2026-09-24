@@ -55,10 +55,29 @@ function build() {
       magicLink({
         expiresIn: 15 * 60,
         storeToken: 'hashed', // a DB leak must not hand out live sign-in links
-        sendMagicLink: async ({ email, url }) => {
+        sendMagicLink: async ({ email, url }, request) => {
           // Lazy: keeps resend/react-email out of the middleware bundle.
-          const [{ sendEmail }, { MagicLinkEmail }] = await Promise.all([import('./email'), import('../emails')])
-          if (await sendEmail([email], 'Your VoiceFlow sign-in link', createElement(MagicLinkEmail, { url }))) return
+          const [{ sendEmail, brandFrom, emailFrom }, { MagicLinkEmail }, { resolveBrandingForHost, platformBranding }] =
+            await Promise.all([import('./email'), import('../emails'), import('./branding')])
+          // Phase 27 — the one email we cannot brand from an org, because at
+          // sign-in time we do not know which org this address belongs to (it
+          // may be several, or none yet). The VANITY HOST is the only signal
+          // available, and it is the right one: a reseller's customer requests
+          // their link on the reseller's domain, so that is whose product this
+          // is. No custom domain → the platform look, which is correct for
+          // every direct customer.
+          const host = request?.headers?.get('host') ?? null
+          const branding = (await resolveBrandingForHost(host)) ?? platformBranding()
+          const brand = brandFrom(branding)
+          if (
+            await sendEmail(
+              [email],
+              `Your ${brand.productName} sign-in link`,
+              createElement(MagicLinkEmail, { url, brand }),
+              emailFrom(brand, branding)
+            )
+          )
+            return
           if (process.env.NODE_ENV === 'production') throw new Error('RESEND_API_KEY is not set — sign-in links cannot be sent')
           console.log(`[auth] magic link for ${email}: ${url}`) // dev: no Resend key, click from the log
         },

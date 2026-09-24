@@ -110,7 +110,11 @@ export function applyCallMappings(input: CallInput, into: Record<string, unknown
 
 /** A human-readable title for the logged call, outcome included when we have one. */
 export function callTitle(input: CallInput): string {
-  const who = input.agentName ? `${input.agentName}` : 'VoiceFlow agent'
+  // Phase 27: this text is written into the CUSTOMER's CRM, where it outlives
+  // the session and is read by people who never see our UI. Naming the platform
+  // there is the single most durable way a white-labelled deployment leaks, so
+  // the fallback is generic and the branded name is passed in by the caller.
+  const who = input.agentName ? `${input.agentName}` : `${input.productName} agent`
   const base = `${input.direction === 'inbound' ? 'Inbound' : 'Outbound'} call — ${who}`
   return input.outcome ? `${base} (${input.outcome.replace(/_/g, ' ')})` : base
 }

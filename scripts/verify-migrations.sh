@@ -128,7 +128,11 @@ echo "==> live RLS isolation tests through PostgREST"
 # api-keys-db.live.test.ts belongs here too: it proves the settings UI's reads
 # and revokes are scoped to ONE org, which RLS alone does not do (it narrows to
 # every org the viewer is a member of).
-if ! npx vitest run packages/db/src/rls.test.ts apps/web/lib/api-keys-db.live.test.ts; then
+# agency-db.live.test.ts is here for the same reason: it proves the /agency
+# screen's queries are scoped to ONE parent org. RLS does not do that — since
+# 0022 it returns true for every org the caller RESELLS as well as every org
+# they are a member of, so an unscoped query would cross two agencies.
+if ! npx vitest run packages/db/src/rls.test.ts apps/web/lib/api-keys-db.live.test.ts apps/web/lib/agency-db.live.test.ts; then
   echo "    FAIL live tests"
   fail=1
 fi
@@ -212,9 +216,24 @@ check "service_role can still read key hashes" "t" \
 check "key_hash lookup is indexed and unique" "1" \
   "select count(*) from pg_indexes where schemaname='public' and tablename='api_keys'
    and indexdef like '%UNIQUE%' and indexdef like '%key_hash%'"
-# Only Pro. A wrong seed here silently opens the API to every tenant.
-check "only the pro plan has API access" "pro" \
+# Pro and Agency. A wrong seed here silently opens the API to every tenant, so
+# this asserts the exact list rather than a count — adding a plan that happens to
+# carry the flag has to be a deliberate edit here too.
+# (Phase 27 widened this from "pro" alone: the Agency tier is sold above Pro and
+# includes everything Pro has, the API among them.)
+check "only the pro and agency plans have API access" "agency,pro" \
   "select string_agg(id, ',' order by id) from plans where api_enabled"
+
+# Phase 27: the agency tier's own gate, asserted the same way and for the same
+# reason — agency_enabled is what lets an org create OTHER orgs and read their
+# data through is_parent_reseller(), so it spreading to a cheaper plan is a
+# tenancy breach, not a pricing mistake.
+check "only the agency plan can resell" "agency" \
+  "select string_agg(id, ',' order by id) from plans where agency_enabled"
+# Rule 5: nothing is unlimited. A sub-org ceiling of 0 on every non-agency plan
+# is what makes agency_enabled the only door.
+check "no non-agency plan may hold sub-orgs" "0" \
+  "select count(*) from plans where max_sub_orgs > 0 and not agency_enabled"
 
 # Phase 25: the CRM OAuth tokens get the same treatment as the Twilio creds —
 # and for the same reason. These are bearer credentials for a customer's CRM;
@@ -246,6 +265,103 @@ check "CRM sync is unique per call+provider" "1" \
   "select count(*) from pg_indexes
    where schemaname='public' and tablename='crm_sync_attempts'
      and indexdef like '%UNIQUE%' and indexdef like '%call_id%' and indexdef like '%provider%'"
+
+# ── Phase 27: the white-label tier ──────────────────────────────────────────
+#
+# Three properties, each one a way this phase could quietly become a breach.
+
+# (1) SENDER VERIFICATION IS OURS TO ASSERT. email_sender_verified says "we
+# checked that this tenant controls this sending domain". A reseller able to
+# write it can send mail as any domain they like from our infrastructure, which
+# is a spoofing primitive rather than a branding feature. The rest of the row is
+# theirs to edit, so this is a COLUMN grant and has to be asserted as one.
+check "members cannot mark their own sending domain verified" "0" \
+  "select count(*) from information_schema.column_privileges
+   where table_schema='public' and table_name='org_branding'
+     and column_name='email_sender_verified' and grantee='authenticated'
+     and privilege_type='UPDATE'"
+check "members can still edit the rest of their branding" "8" \
+  "select count(*) from information_schema.column_privileges
+   where table_schema='public' and table_name='org_branding' and grantee='authenticated'
+     and privilege_type='UPDATE'"
+check "org_branding has RLS on" "t" \
+  "select rowsecurity from pg_tables where schemaname='public' and tablename='org_branding'"
+check "anon holds nothing on org_branding" "0" \
+  "select count(*) from (values ('SELECT'),('INSERT'),('UPDATE'),('DELETE')) p(priv)
+   where has_table_privilege('anon', 'public.org_branding', p.priv)"
+
+# (2) THE COLOUR IS INTERPOLATED INTO A <style> BLOCK. The app validates it on
+# write AND on read, but the database is the backstop for every writer that is
+# not the app — a restored dump, a console, a later migration. Without this
+# constraint the whole chain rests on application code.
+check "brand_color is constrained to a hex literal" "1" \
+  "select count(*) from pg_constraint
+   where conrelid='public.org_branding'::regclass and pg_get_constraintdef(oid) like '%brand_color%~%'"
+# A CLAIMED hostname is not a PROVEN one. Branding resolves by host BEFORE it
+# resolves by session, so a tenant able to mark their own claim verified could
+# write our own hostname here and repaint the real product, on the real domain,
+# for every visitor. Same shape as email_sender_verified, same treatment.
+# (Found by the phase's security review, not by the build.)
+check "members cannot verify their own vanity host" "0" \
+  "select count(*) from information_schema.column_privileges
+   where table_schema='public' and table_name='org_branding'
+     and column_name='custom_domain_verified_at' and grantee='authenticated'
+     and privilege_type='UPDATE'"
+# product_name is interpolated into RFC 5322 From and Subject headers, where a
+# bare CR or LF appends an attacker-chosen header to every message the workspace
+# sends. Length was never the limit — the payload fits in 24 characters.
+check "product_name cannot carry a control character" "1" \
+  "select count(*) from pg_constraint
+   where conrelid='public.org_branding'::regclass
+     and pg_get_constraintdef(oid) like '%cntrl%'"
+# The stamp certifies a HOSTNAME but lives on a ROW, so it must not survive the
+# hostname changing — otherwise a tenant whose first host was verified repoints
+# the column at a rival's host and keeps the verification. Enforced in the DB
+# because `authenticated` deliberately cannot write the stamp to clear it.
+check "changing a vanity host re-arms verification" "1" \
+  "select count(*) from pg_trigger where tgrelid='public.org_branding'::regclass
+     and tgname='org_branding_reverify_trg' and not tgisinternal"
+# The tier's core promise: a client inherits its agency's branding. A sub-org's
+# member is NOT a member of the parent, so without this second read policy the
+# parent's row is invisible to them and every unbranded client falls back to
+# the platform name — the exact thing the tier is sold to prevent.
+check "a client can read the branding it inherits" "2" \
+  "select count(*) from pg_policies where schemaname='public' and tablename='org_branding'
+     and cmd='SELECT'"
+# INSERT needs the same column treatment UPDATE got: 0000 grants members
+# table-level INSERT, so a first write could otherwise set a verification flag.
+check "members cannot set a verification flag on insert" "0" \
+  "select count(*) from information_schema.column_privileges
+   where table_schema='public' and table_name='org_branding' and grantee='authenticated'
+     and privilege_type='INSERT'
+     and column_name in ('email_sender_verified','custom_domain_verified_at')"
+check "a vanity host can belong to exactly one org" "1" \
+  "select count(*) from pg_indexes where schemaname='public' and tablename='org_branding'
+     and indexdef like '%UNIQUE%' and indexdef like '%custom_domain%'"
+
+# (3) ROLLUP IS BILLING (rule 5), so members read it and nothing else. A member
+# who can write agency_periods writes their own invoice.
+check "agency_periods has RLS on" "t" \
+  "select rowsecurity from pg_tables where schemaname='public' and tablename='agency_periods'"
+check "members cannot write the rollup they are billed from" "0" \
+  "select count(*) from (values ('anon'),('authenticated')) r(role),
+   (values ('INSERT'),('UPDATE'),('DELETE')) p(priv)
+   where has_table_privilege(r.role, 'public.agency_periods', p.priv)"
+check "members can read their own rollup" "t" \
+  "select has_table_privilege('authenticated', 'public.agency_periods', 'SELECT')"
+check "the rollup recompute is service-role only" "0" \
+  "select count(*) from (values ('anon'),('authenticated')) r(role)
+   where has_function_privilege(r.role, 'public.recompute_agency_usage(uuid,date)', 'EXECUTE')"
+
+# Tenancy stays exactly one level deep. Every rule in this phase — who a reseller
+# sees, whose minutes roll up where — is written as ONE hop, so a grandchild does
+# not make them wrong loudly; it makes them wrong silently.
+check "the one-level trigger is installed" "1" \
+  "select count(*) from pg_trigger where tgrelid='public.orgs'::regclass
+     and tgname='orgs_one_level_deep_trg' and not tgisinternal"
+check "reseller is a real role" "1" \
+  "select count(*) from pg_constraint
+   where conrelid='public.org_members'::regclass and pg_get_constraintdef(oid) like '%reseller%'"
 
 echo "==> re-running (must be a no-op)"
 rerun=$(npx tsx scripts/migrate.ts)

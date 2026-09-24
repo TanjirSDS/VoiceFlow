@@ -63,6 +63,7 @@ const CALL = {
   summary: 'Caller booked a Tuesday 10am slot.',
   outcome: 'booked',
   agentName: 'Front desk',
+  productName: 'VoiceFlow',
   recordingUrl: 'https://example.test/rec.mp3',
 }
 

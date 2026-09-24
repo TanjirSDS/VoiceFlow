@@ -17,6 +17,15 @@ const PUBLIC_PREFIXES = [
   // Phase 24: the public API authenticates with a bearer key, not a session
   // cookie. withApiAuth() is the gate — see lib/api-v1/wrapper.ts.
   '/api/v1',
+  // Phase 27: the white-label logo. It MUST answer signed-out — a reseller's
+  // customer meets this product on their sign-in page, and a redirect to
+  // /login there renders a broken image where the agency's mark should be.
+  // Safe to expose: the route takes no parameters, resolves the org from the
+  // vanity host or the session exactly as the page does, and returns one image
+  // — the same image it is about to show that visitor anyway. No tenant data
+  // is reachable through it, and with neither a matching host nor a session it
+  // answers 404.
+  '/api/branding',
 ]
 
 // Gates everything else behind a real session check (Node runtime, so Better

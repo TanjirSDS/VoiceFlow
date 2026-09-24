@@ -91,6 +91,7 @@ describe('applyCallMappings', () => {
     summary: 'Booked a Tuesday slot',
     outcome: 'booked',
     agentName: 'Front desk',
+    productName: 'VoiceFlow',
     recordingUrl: null,
   }
 
@@ -127,6 +128,7 @@ describe('callTitle', () => {
       summary: null,
       outcome: 'lead_captured',
       agentName: 'Front desk',
+      productName: 'VoiceFlow',
       recordingUrl: null,
       mappings: { contact: {}, call: {} },
     })

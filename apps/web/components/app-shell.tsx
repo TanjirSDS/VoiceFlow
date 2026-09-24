@@ -7,6 +7,7 @@ import { cn } from '../lib/utils'
 import type { Membership } from '../lib/org'
 import { AccountMenu } from './account-menu'
 import {
+  AgencyIcon,
   AgentIcon,
   AlertIcon,
   BillingIcon,
@@ -35,7 +36,7 @@ const SIDEBAR_COOKIE = 'sidebar-collapsed'
 // the icon in components/icons.tsx. Only routes that exist today are listed.
 // Full intended order: Dashboard, Agents, Knowledge Base, Phone Numbers,
 // Call History, Contacts, Campaigns, Analytics, QA, Alerting, Integrations, Billing.
-const NAV: { href: string; label: string; Icon: (p: IconProps) => ReactNode }[] = [
+const NAV: { href: string; label: string; Icon: (p: IconProps) => ReactNode; agencyOnly?: boolean }[] = [
   { href: '/dashboard', label: 'Dashboard', Icon: DashboardIcon },
   { href: '/agents', label: 'Agents', Icon: AgentIcon },
   { href: '/knowledge', label: 'Knowledge Base', Icon: BookIcon },
@@ -47,6 +48,9 @@ const NAV: { href: string; label: string; Icon: (p: IconProps) => ReactNode }[] 
   { href: '/qa', label: 'QA', Icon: QaIcon },
   { href: '/alerts', label: 'Alerting', Icon: AlertIcon },
   { href: '/integrations', label: 'Integrations', Icon: IntegrationsIcon },
+  // Phase 27. Gated per-org (see ShellData.showAgency), so it is filtered out of
+  // NAV rather than absent from it — the canonical order stays in one place.
+  { href: '/agency', label: 'Agency', Icon: AgencyIcon, agencyOnly: true },
   { href: '/billing', label: 'Billing', Icon: BillingIcon },
 ]
 
@@ -59,6 +63,15 @@ export interface ShellData {
   orgName: string
   planName: string
   role: string
+  /** Phase 27: what this org calls the product. Never the literal 'VoiceFlow'
+   *  for a white-labelled tenant — it is resolved server-side in lib/branding. */
+  productName: string
+  logoUrl: string | null
+  whiteLabelled: boolean
+  /** Agency console visible: this org can resell AND is not itself a sub-org. */
+  showAgency: boolean
+  /** This workspace is resold by an agency (orgs.parent_org_id is set). */
+  isSubOrg: boolean
   usage: UsageData
   memberships: Membership[]
   userEmail: string | null
@@ -99,6 +112,10 @@ function SidebarBody({
           activePlanName={data.planName}
           memberships={data.memberships}
           collapsed={rail}
+          productName={data.productName}
+          logoUrl={data.logoUrl}
+          whiteLabelled={data.whiteLabelled}
+          isSubOrg={data.isSubOrg}
         />
       </div>
 
@@ -108,7 +125,7 @@ function SidebarBody({
             Workspace
           </p>
         )}
-        {NAV.map(({ href, label, Icon }) => {
+        {NAV.filter((n) => !n.agencyOnly || data.showAgency).map(({ href, label, Icon }) => {
           const active = isActive(pathname, href)
           const link = (
             <Link
@@ -232,7 +249,7 @@ export function AppShell({
               <PanelToggleIcon />
             </button>
             <div className="flex items-center gap-2 text-sm">
-              <span className="text-muted-foreground">VoiceFlow</span>
+              <span className="text-muted-foreground">{data.productName}</span>
               {current && (
                 <>
                   <span className="text-muted-foreground/40">/</span>

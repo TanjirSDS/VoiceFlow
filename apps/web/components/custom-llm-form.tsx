@@ -1,4 +1,5 @@
 'use client'
+import { useProductName } from './branding-provider'
 
 // Custom LLM editor (Phase 11, item 8): for agent_type 'custom_llm', this replaces
 // the prompt editor. The API key is sent to the server action, stored as an
@@ -17,6 +18,7 @@ export function CustomLlmForm({
   agentId: string
   initial: { url: string; modelId: string; hasKey: boolean }
 }) {
+  const productName = useProductName()
   const [url, setUrl] = useState(initial.url)
   const [modelId, setModelId] = useState(initial.modelId)
   const [apiKey, setApiKey] = useState('')
@@ -63,7 +65,7 @@ export function CustomLlmForm({
           placeholder={initial.hasKey ? '•••••••• (stored — leave blank to keep)' : 'sk-…'}
         />
         <p className="mt-1 text-xs text-muted-foreground">
-          Stored as a secret at the provider — never saved in VoiceFlow.
+          Stored as a secret at the provider — never saved in {productName}.
         </p>
       </div>
       <div className="flex items-center gap-3">

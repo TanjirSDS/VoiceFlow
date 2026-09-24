@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import { createWorkspaceAction, switchWorkspaceAction } from '@/app/actions'
 import type { Membership } from '../lib/org'
 import { cn } from '../lib/utils'
-import { Logo } from './icons'
+import { BrandMark } from './brand-mark'
 import { Button } from './ui/button'
 import {
   Dialog,
@@ -38,12 +38,24 @@ export function WorkspaceSwitcher({
   activePlanName,
   memberships,
   collapsed = false,
+  productName,
+  logoUrl,
+  whiteLabelled,
+  isSubOrg,
 }: {
   activeOrgId: string
   activeOrgName: string
   activePlanName: string
   memberships: Membership[]
   collapsed?: boolean
+  productName: string
+  logoUrl: string | null
+  whiteLabelled: boolean
+  /** Phase 27: this workspace is resold by an agency. Two things follow — our
+   *  plan vocabulary is hidden (their billing relationship is with the agency,
+   *  not us) and they cannot spin up a workspace of their own from in here,
+   *  which would drop them onto unbranded VoiceFlow mid-session. */
+  isSubOrg?: boolean
 }) {
   const [createOpen, setCreateOpen] = useState(false)
   const [pending, startSwitch] = useTransition()
@@ -74,16 +86,23 @@ export function WorkspaceSwitcher({
               collapsed ? 'w-full justify-center p-0' : 'w-full px-1.5 py-1.5'
             )}
           >
-            <Logo />
+            <BrandMark
+              productName={productName}
+              logoUrl={logoUrl}
+              whiteLabelled={whiteLabelled}
+              size={collapsed ? 'sm' : 'md'}
+            />
             {!collapsed && (
               <>
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="truncate font-display text-sm font-semibold leading-tight tracking-tight">
                     {activeOrgName}
                   </span>
-                  <span className="truncate text-[11px] font-medium capitalize text-muted-foreground">
-                    {activePlanName} plan
-                  </span>
+                  {!isSubOrg && (
+                    <span className="truncate text-[11px] font-medium capitalize text-muted-foreground">
+                      {activePlanName} plan
+                    </span>
+                  )}
                 </span>
                 <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-muted-foreground" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <path d="m7 15 5 5 5-5M7 9l5-5 5 5" />
@@ -103,15 +122,23 @@ export function WorkspaceSwitcher({
               {m.orgId === activeOrgId && <Check />}
             </DropdownMenuItem>
           ))}
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={() => setCreateOpen(true)}>
-            <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md border border-dashed text-muted-foreground">
-              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <path d="M12 5v14M5 12h14" />
-              </svg>
-            </span>
-            Create workspace
-          </DropdownMenuItem>
+          {/* Hidden inside a resold workspace: creating one lands the user on an
+              unbranded VoiceFlow workspace, which is the tier's whole promise
+              broken by a menu item. The server action enforces it too — this is
+              UX, createWorkspaceAction is the gate. */}
+          {!isSubOrg && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => setCreateOpen(true)}>
+                <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md border border-dashed text-muted-foreground">
+                  <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M12 5v14M5 12h14" />
+                  </svg>
+                </span>
+                Create workspace
+              </DropdownMenuItem>
+            </>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
 

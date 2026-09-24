@@ -9,9 +9,10 @@ import {
   WeeklySummaryEmail,
   WelcomeEmail,
 } from '../emails'
-import { expireDunning, reportOverageDaily } from './billing'
+import { expireDunning, reportAgencyDaily, reportOverageDaily } from './billing'
 import { DUNNING_GRACE_DAYS } from './billing-math'
-import { appUrl, orgOwnerEmails, sendEmail } from './email'
+import { emailBrandFor, orgOwnerEmails, sendEmail } from './email'
+import type { EmailBrand } from '../emails'
 import { makeEngine } from './engine'
 import {
   appProbes,
@@ -112,8 +113,18 @@ const reconcileDaily = inngest.createFunction(
     const engine = makeEngine()
     const summary = await step.run('reconcile', () => reconcileYesterday(db, engine))
     const overage = await step.run('report-overage', () => reportOverageDaily(db, stripeClient()))
+    // Phase 27: after recompute_usage has rewritten every org's minutes, roll
+    // each agency's family onto the parent's invoice. Its own step so an agency
+    // rollup failure cannot lose the direct-overage report that already
+    // succeeded — and both are idempotent on a retry.
+    const agency = await step.run('report-agency', () => reportAgencyDaily(db, stripeClient()))
     const dunning = await step.run('expire-dunning', () => expireDunning(db, engine))
-    return { ...summary, overageOrgsReported: overage, dunningPaused: dunning }
+    return {
+      ...summary,
+      overageOrgsReported: overage,
+      agencyOrgsReported: agency,
+      dunningPaused: dunning,
+    }
   }
 )
 
@@ -161,54 +172,78 @@ const statusPoll = inngest.createFunction(
 
 // --- Emails -----------------------------------------------------------------
 
-async function emailOwners(orgId: string, subject: string, build: (orgName: string) => ReactElement) {
+/**
+ * Phase 27: the SUBJECT is a function of the brand, not a string.
+ *
+ * This is the choke point every owner-facing email goes through, so making the
+ * brand an argument to both halves is what stops the next one being written
+ * with "VoiceFlow" typed into it — the type system asks whose product this is
+ * before it will compile. A subject line is the most-read branded surface we
+ * have; it shows in the notification before the body is ever opened.
+ */
+async function emailOwners(
+  orgId: string,
+  subject: (brand: EmailBrand) => string,
+  build: (orgName: string, brand: EmailBrand) => ReactElement
+) {
   const db = serviceClient()
   const { data: org } = await db.from('orgs').select('name').eq('id', orgId).maybeSingle()
   if (!org) return 'org gone'
   const to = await orgOwnerEmails(orgId)
-  const sent = await sendEmail(to, subject, build(org.name))
+  const { brand, from } = await emailBrandFor(orgId)
+  const sent = await sendEmail(to, subject(brand), build(org.name, brand), from)
   return sent ? `sent to ${to.length} owner(s)` : 'skipped (no RESEND_API_KEY or no owners)'
 }
 
 const welcomeEmail = inngest.createFunction(
   { id: 'email-welcome', onFailure: deadLetter, triggers: [{ event: 'org/created' }] },
   ({ event }) =>
-    emailOwners(event.data.orgId as string, 'Welcome to VoiceFlow', (orgName) =>
-      WelcomeEmail({ orgName, appUrl: appUrl() })
+    emailOwners(
+      event.data.orgId as string,
+      (b) => `Welcome to ${b.productName}`,
+      (orgName, brand) => WelcomeEmail({ orgName, brand })
     )
 )
 
 const usageWarnEmail = inngest.createFunction(
   { id: 'email-usage-warn', onFailure: deadLetter, triggers: [{ event: 'usage/warned' }] },
   ({ event }) =>
-    emailOwners(event.data.orgId as string, 'VoiceFlow: 80% of your minutes used', (orgName) =>
-      UsageWarnEmail({
-        orgName,
-        minutesUsed: event.data.minutesUsed as number,
-        capMinutes: event.data.capMinutes as number,
-        appUrl: appUrl(),
-      })
+    emailOwners(
+      event.data.orgId as string,
+      (b) => `${b.productName}: 80% of your minutes used`,
+      (orgName, brand) =>
+        UsageWarnEmail({
+          orgName,
+          minutesUsed: event.data.minutesUsed as number,
+          capMinutes: event.data.capMinutes as number,
+          brand,
+        })
     )
 )
 
 const usageCappedEmail = inngest.createFunction(
   { id: 'email-usage-capped', onFailure: deadLetter, triggers: [{ event: 'usage/capped' }] },
   ({ event }) =>
-    emailOwners(event.data.orgId as string, 'VoiceFlow: minute cap reached', (orgName) =>
-      UsageCappedEmail({
-        orgName,
-        capMinutes: event.data.capMinutes as number,
-        policy: event.data.policy as string,
-        appUrl: appUrl(),
-      })
+    emailOwners(
+      event.data.orgId as string,
+      (b) => `${b.productName}: minute cap reached`,
+      (orgName, brand) =>
+        UsageCappedEmail({
+          orgName,
+          capMinutes: event.data.capMinutes as number,
+          policy: event.data.policy as string,
+          brand,
+        })
     )
 )
 
 const paymentFailedEmail = inngest.createFunction(
   { id: 'email-payment-failed', onFailure: deadLetter, triggers: [{ event: 'billing/payment-failed' }] },
   ({ event }) =>
-    emailOwners(event.data.orgId as string, 'VoiceFlow: payment failed — action needed', (orgName) =>
-      PaymentFailedEmail({ orgName, graceDays: DUNNING_GRACE_DAYS, appUrl: appUrl() })
+    emailOwners(
+      event.data.orgId as string,
+      (b) => `${b.productName}: payment failed — action needed`,
+      (orgName, brand) => PaymentFailedEmail({ orgName, graceDays: DUNNING_GRACE_DAYS, brand })
     )
 )
 
@@ -244,17 +279,19 @@ const weeklySummary = inngest.createFunction(
           .map((c) => c.summary as string)
 
         const to = await orgOwnerEmails(org.id)
+        const { brand, from } = await emailBrandFor(org.id)
         return sendEmail(
           to,
-          'Your week on VoiceFlow',
+          `Your week on ${brand.productName}`,
           WeeklySummaryEmail({
             orgName: org.name,
             calls: calls.length,
             minutes: calls.reduce((m, c) => m + (c.duration_secs ?? 0), 0) / 60,
             outcomes,
             topQuestions,
-            appUrl: appUrl(),
-          })
+            brand,
+          }),
+          from
         )
       })
       if (sent) sentCount++
@@ -357,6 +394,7 @@ const agentLearning = inngest.createFunction(
         const orgSuggestions = digest.reduce((n, d) => n + d.titles.length, 0)
         const sent = await step.run(`email-${org.id}`, async () => {
           const to = await orgOwnerEmails(org.id)
+          const { brand, from } = await emailBrandFor(org.id)
           return sendEmail(
             to,
             `Your agent learned ${orgSuggestions} new thing${orgSuggestions === 1 ? '' : 's'} this week`,
@@ -364,8 +402,9 @@ const agentLearning = inngest.createFunction(
               orgName: org.name,
               agents: digest,
               totalSuggestions: orgSuggestions,
-              appUrl: appUrl(),
-            })
+              brand,
+            }),
+            from
           )
         })
         if (sent) emailed++

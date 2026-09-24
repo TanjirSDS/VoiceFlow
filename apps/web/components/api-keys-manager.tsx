@@ -1,4 +1,5 @@
 'use client'
+import { useProductName } from './branding-provider'
 
 import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
@@ -21,6 +22,7 @@ export interface ApiKeyRow {
 const fmt = (iso: string | null) => (iso ? iso.slice(0, 10) : '—')
 
 export function ApiKeysManager({ keys, isOwner }: { keys: ApiKeyRow[]; isOwner: boolean }) {
+  const productName = useProductName()
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
   // Non-null only between creation and closing the dialog: the key is never
@@ -68,7 +70,7 @@ export function ApiKeysManager({ keys, isOwner }: { keys: ApiKeyRow[]; isOwner: 
         <div>
           <h2 className="text-lg font-semibold tracking-tight">API keys</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Authenticate requests to the VoiceFlow API with{' '}
+            Authenticate requests to the {productName} API with{' '}
             <code className="rounded bg-muted px-1">Authorization: Bearer &lt;key&gt;</code>. Keys
             are scoped to this workspace.
           </p>

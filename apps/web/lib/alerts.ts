@@ -17,7 +17,7 @@ import {
 } from './alerts-eval'
 import { includedRateCentsPerMin } from './billing-math'
 import { AlertEmail } from '../emails'
-import { appUrl, sendEmail } from './email'
+import { emailBrandFor, sendEmail } from './email'
 import { currentPeriodUsage } from './usage'
 import { enqueueWebhookEvent } from './webhooks-out'
 
@@ -112,9 +112,10 @@ export async function evaluateAlert(db: Db, alert: AlertRow, nowMs: number = Dat
   // re-fire is impossible now that last_state is set).
   if (emails.length) {
     const { data: org } = await db.from('orgs').select('name').eq('id', alert.org_id).maybeSingle()
+    const { brand, from } = await emailBrandFor(alert.org_id)
     await sendEmail(
       emails,
-      `VoiceFlow alert: ${alert.name}`,
+      `${brand.productName} alert: ${alert.name}`,
       AlertEmail({
         orgName: org?.name ?? 'your workspace',
         alertName: alert.name,
@@ -122,8 +123,9 @@ export async function evaluateAlert(db: Db, alert: AlertRow, nowMs: number = Dat
         operatorLabel: ALERT_OPERATOR_LABELS[alert.operator],
         value,
         threshold: Number(alert.threshold),
-        appUrl: appUrl(),
-      })
+        brand,
+      }),
+      from
     ).catch((e) => console.error('alert email failed:', e))
   }
 
