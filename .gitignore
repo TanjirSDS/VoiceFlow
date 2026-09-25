@@ -1,8 +1,11 @@
 node_modules/
 .next/
 .turbo/
-.env.local
-.env*.local
+# Every env file holds real secrets and this repo is public. Plain .env was not
+# covered before; .env.example is the only one that belongs in git.
+.env
+.env.*
+!.env.example
 *.tsbuildinfo
 .DS_Store
 coverage/

@@ -14,6 +14,8 @@ Twilio integration). Our code NEVER touches audio.
   Better Auth (magic link) for auth. All tenant tables have org_id with RLS.
 - Stripe Billing, Twilio (numbers only), ElevenLabs Agents API, Sentry, Inngest (Phase 6+).
 - Deploy: Railway (railway.json). Env vars via .env.local, validated with zod in a single env.ts.
+  Locally that is the ROOT .env.local; `next dev` only reads apps/web/.env.local, so symlink
+  it there (see .env.example). Never create a plain .env — the repo is public.
 
 ## HARD RULES
 
