@@ -1816,3 +1816,16 @@ ever sees — rendered a broken image.
   MUTATION-CHECKED: with the 7 action files reverted to main, 7 of its 8 cases fail
   (the 8th documents the RLS hazard and passes either way). 963 unit tests pass; lint
   (provider fence intact), typecheck and build clean.
+
+### Configurable outcome classifier (2026-09-28)
+- lib/outcome.ts classifyCall now takes a ClassifierConfig {baseUrl, model, apiKey}
+  built by classifierConfig(getEnv()) — env CLASSIFIER_BASE_URL (default
+  https://api.openai.com/v1), CLASSIFIER_MODEL (default gpt-4o-mini),
+  CLASSIFIER_API_KEY (falls back to OPENAI_API_KEY; no key → null → off, as before).
+  Any OpenAI-compatible /chat/completions server works (fine-tune, vLLM, Ollama,
+  Together, Groq). Still sends response_format json_object; a server that rejects it
+  now logs `classifier <model> → HTTP <status>` instead of failing silently.
+- parseOutcome slices first '{' → last '}' before JSON.parse: non-OpenAI models wrap
+  the object in ```json fences or prose. Enum check unchanged.
+- ONLY the classifier moved. learning.ts + generate-agent.ts still call OpenAI with
+  OPENAI_API_KEY — a small classifier model shouldn't inherit agent generation.

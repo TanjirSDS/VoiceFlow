@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 import fixture from '../../../packages/engine/fixtures/post-call-transcription.json'
-import { buildMessages, classifyCall, deriveOutcome, parseOutcome } from './outcome'
+import { buildMessages, classifierConfig, classifyCall, deriveOutcome, parseOutcome } from './outcome'
 
 const transcript = fixture.data.transcript
+const cfg = { baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini', apiKey: 'sk-test' }
 
 function fakeOpenAI(content: string) {
   return vi.fn(async () =>
@@ -25,7 +26,7 @@ describe('outcome extraction', () => {
 
   it('classifies the fixture transcript from the model response', async () => {
     const fetchFn = fakeOpenAI('{"outcome":"lead_captured","summary":"Caller reported a leaking sink; contact details collected."}')
-    const result = await classifyCall(transcript, 'sk-test', fetchFn)
+    const result = await classifyCall(transcript, cfg, fetchFn)
     expect(result).toEqual({
       outcome: 'lead_captured',
       summary: 'Caller reported a leaking sink; contact details collected.',
@@ -38,10 +39,36 @@ describe('outcome extraction', () => {
     expect(parseOutcome('The outcome is booked.')).toBeNull()
   })
 
+  it('reads JSON a non-OpenAI model wrapped in fences or prose', () => {
+    expect(parseOutcome('```json\n{"outcome":"booked","summary":"x"}\n```')).toEqual({ outcome: 'booked', summary: 'x' })
+    expect(parseOutcome('Here you go: {"outcome":"spam","summary":"y"}')).toEqual({ outcome: 'spam', summary: 'y' })
+  })
+
+  it('sends to the configured endpoint and model', async () => {
+    const fetchFn = fakeOpenAI('{"outcome":"booked","summary":"z"}')
+    const custom = classifierConfig({
+      CLASSIFIER_BASE_URL: 'http://vllm.internal:8000/v1/',
+      CLASSIFIER_MODEL: 'acme/call-classifier',
+      CLASSIFIER_API_KEY: 'local',
+      OPENAI_API_KEY: 'sk-openai',
+    })
+    await classifyCall(transcript, custom, fetchFn)
+    const [url, init] = (fetchFn as unknown as ReturnType<typeof vi.fn>).mock.calls[0]
+    expect(url).toBe('http://vllm.internal:8000/v1/chat/completions')
+    expect(JSON.parse(init.body).model).toBe('acme/call-classifier')
+    expect(init.headers.authorization).toBe('Bearer local')
+  })
+
+  it('falls back to OPENAI_API_KEY and is off with no key at all', () => {
+    const base = { CLASSIFIER_BASE_URL: 'https://api.openai.com/v1', CLASSIFIER_MODEL: 'gpt-4o-mini' }
+    expect(classifierConfig({ ...base, OPENAI_API_KEY: 'sk-openai' })?.apiKey).toBe('sk-openai')
+    expect(classifierConfig(base)).toBeNull()
+  })
+
   it('skips silently without an API key or transcript', async () => {
     const fetchFn = fakeOpenAI('unused')
-    expect(await classifyCall(transcript, undefined, fetchFn)).toBeNull()
-    expect(await classifyCall([], 'sk-test', fetchFn)).toBeNull()
+    expect(await classifyCall(transcript, null, fetchFn)).toBeNull()
+    expect(await classifyCall([], cfg, fetchFn)).toBeNull()
     expect(fetchFn).not.toHaveBeenCalled()
   })
 })
