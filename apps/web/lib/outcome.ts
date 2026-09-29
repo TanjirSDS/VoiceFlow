@@ -2,6 +2,7 @@
 // One cheap LLM call per finished call, best-effort: any failure → null, the
 // call row just keeps outcome/summary null.
 
+import type { Env } from '@voiceflow/db'
 import type { CallAnalysis } from '@voiceflow/engine'
 
 export const OUTCOMES = [
@@ -33,7 +34,20 @@ export const OUTCOME_COLORS: Record<Outcome, string> = {
   opt_out: '#77777c',
 }
 
-export const OUTCOME_MODEL = 'gpt-4o-mini'
+/** Where the classifier sends transcripts. null = classification off. */
+export interface ClassifierConfig {
+  baseUrl: string
+  model: string
+  apiKey: string
+}
+
+export function classifierConfig(
+  env: Pick<Env, 'CLASSIFIER_BASE_URL' | 'CLASSIFIER_MODEL' | 'CLASSIFIER_API_KEY' | 'OPENAI_API_KEY'>
+): ClassifierConfig | null {
+  const apiKey = env.CLASSIFIER_API_KEY ?? env.OPENAI_API_KEY
+  if (!apiKey) return null
+  return { baseUrl: env.CLASSIFIER_BASE_URL.replace(/\/+$/, ''), model: env.CLASSIFIER_MODEL, apiKey }
+}
 
 const SYSTEM_PROMPT = `You classify transcripts of phone calls handled by an AI voice agent for a small business.
 Reply with JSON only: {"outcome": "<one of: ${OUTCOMES.join(', ')}>", "summary": "<one line, max 20 words>"}.
@@ -65,7 +79,8 @@ export function buildMessages(transcript: Turn[]) {
 
 export function parseOutcome(content: string): CallOutcome | null {
   try {
-    const parsed = JSON.parse(content)
+    // Non-OpenAI models often wrap the object in ```json fences or prose.
+    const parsed = JSON.parse(content.slice(content.indexOf('{'), content.lastIndexOf('}') + 1))
     if ((OUTCOMES as readonly string[]).includes(parsed.outcome) && typeof parsed.summary === 'string') {
       return { outcome: parsed.outcome, summary: parsed.summary.slice(0, 300) }
     }
@@ -101,27 +116,31 @@ export function deriveOutcome(
   return null
 }
 
-/** fetchFn is injectable so the fixture test never talks to OpenAI. */
+/** fetchFn is injectable so the fixture test never talks to a model. */
 export async function classifyCall(
   transcript: unknown,
-  apiKey: string | undefined,
+  cfg: ClassifierConfig | null,
   fetchFn: typeof fetch = fetch
 ): Promise<CallOutcome | null> {
-  if (!apiKey || !Array.isArray(transcript)) return null
+  if (!cfg || !Array.isArray(transcript)) return null
   const messages = buildMessages(transcript as Turn[])
   if (!messages[1].content) return null // nothing said → nothing to classify
 
-  const res = await fetchFn('https://api.openai.com/v1/chat/completions', {
+  const res = await fetchFn(`${cfg.baseUrl}/chat/completions`, {
     method: 'POST',
-    headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
+    headers: { authorization: `Bearer ${cfg.apiKey}`, 'content-type': 'application/json' },
     body: JSON.stringify({
-      model: OUTCOME_MODEL,
+      model: cfg.model,
       temperature: 0,
       response_format: { type: 'json_object' },
       messages,
     }),
   })
-  if (!res.ok) return null
+  if (!res.ok) {
+    // Still best-effort, but a misconfigured custom endpoint shouldn't be silent.
+    console.warn(`classifier ${cfg.model} → HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`)
+    return null
+  }
   const data = await res.json()
   return parseOutcome(data.choices?.[0]?.message?.content ?? '')
 }

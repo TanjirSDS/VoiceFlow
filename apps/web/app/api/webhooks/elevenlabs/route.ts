@@ -3,7 +3,7 @@ import { getEnv, serviceClient } from '@voiceflow/db'
 import { makeEngine } from '../../../../lib/engine'
 import { handleCallWebhook } from '../../../../lib/call-webhook'
 import { emit } from '../../../../lib/events'
-import { classifyCall } from '../../../../lib/outcome'
+import { classifierConfig, classifyCall } from '../../../../lib/outcome'
 import { rateLimit } from '../../../../lib/ratelimit'
 import { enqueueWebhookEvent } from '../../../../lib/webhooks-out'
 
@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
     req.headers.get('elevenlabs-signature'),
     makeEngine('elevenlabs'),
     db,
-    (transcript) => classifyCall(transcript, getEnv().OPENAI_API_KEY),
+    (transcript) => classifyCall(transcript, classifierConfig(getEnv())),
     (providerCallId) => emit('call/recorded', { providerCallId }),
     (orgId, ev) =>
       enqueueWebhookEvent(db, { orgId, eventType: 'call.completed', eventKey: ev.providerCallId, payload: ev })

@@ -40,6 +40,14 @@ const schema = z.object({
   STRIPE_WEBHOOK_SECRET: z.string().min(1),
   /** Optional: outcome extraction (Phase 3) is skipped when absent. */
   OPENAI_API_KEY: z.string().min(1).optional(),
+  /** Outcome classifier endpoint — any OpenAI-compatible /chat/completions
+   *  server (OpenAI, a fine-tune, vLLM, Ollama, Together, Groq…). The key falls
+   *  back to OPENAI_API_KEY; no key at all → classification is off. A server
+   *  without auth still needs CLASSIFIER_API_KEY set to any value. Only the
+   *  classifier reads these — learning + agent generation stay on OpenAI. */
+  CLASSIFIER_BASE_URL: z.string().url().default('https://api.openai.com/v1'),
+  CLASSIFIER_MODEL: z.string().min(1).default('gpt-4o-mini'),
+  CLASSIFIER_API_KEY: z.string().min(1).optional(),
   /** Optional: shared secret for /api/cron/* (sent as a Bearer token). */
   CRON_SECRET: z.string().min(1).optional(),
   /** Optional: reconciliation discrepancies are reported to Sentry when set. */

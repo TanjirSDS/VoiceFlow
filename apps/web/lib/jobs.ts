@@ -27,7 +27,7 @@ import { inngest } from './inngest'
 import { extractSuggestions, type CallForLearning } from './learning'
 import { normalizeStoredConfigSafe } from './types'
 import { externalNumber, recordOptOut } from './opt-out'
-import { classifyCall, deriveOutcome } from './outcome'
+import { classifierConfig, classifyCall, deriveOutcome } from './outcome'
 import { reconcileYesterday } from './reconcile'
 import { stripeClient } from './stripe'
 import { evaluateAlert, type AlertRow } from './alerts'
@@ -64,10 +64,10 @@ const classifyRecordedCall = inngest.createFunction(
     // Phase 12: classify for the rich label (when a key exists), then let EL's
     // native analysis take precedence where decisive (deriveOutcome). EL analysis
     // alone can still set outcome='failed' with no key.
-    const key = getEnv().OPENAI_API_KEY
-    const result = key ? await classifyCall(call.transcript, key) : null
+    const cfg = classifierConfig(getEnv())
+    const result = await classifyCall(call.transcript, cfg)
     const derived = deriveOutcome(result, call.analysis)
-    if (!derived) return key ? 'classifier returned nothing' : 'no analysis, no OPENAI_API_KEY — skipped'
+    if (!derived) return cfg ? 'classifier returned nothing' : 'no analysis, no classifier key — skipped'
     await db.from('calls').update({ outcome: derived.outcome, summary: derived.summary }).eq('id', call.id)
     // Phase 7: "remove me" → permanent do-not-call entry + scrub pending contacts.
     if (derived.outcome === 'opt_out' && call.org_id) {
