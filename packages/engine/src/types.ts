@@ -233,7 +233,9 @@ export interface VoiceEngine {
   deleteAgent(providerAgentId: string): Promise<void>
   /** Read the provider's current config back as a neutral AgentConfig (flow hydration/drift). */
   getAgent(providerAgentId: string): Promise<AgentConfig>
-  importNumber(twilioSid: string, e164: string): Promise<{ providerNumberId: string }>
+  /** Register a Twilio number. `twilio` must be the account the number LIVES in
+   *  (the org's subaccount), not the parent — the provider looks it up there. */
+  importNumber(e164: string, twilio: { accountSid: string; authToken: string }): Promise<{ providerNumberId: string }>
   /** Register a SIP-trunk number (no Twilio account) and return its provider id. */
   importSipNumber(cfg: SipNumberConfig): Promise<{ providerNumberId: string }>
   /** Delete the provider's phone-number record entirely (release flow). */

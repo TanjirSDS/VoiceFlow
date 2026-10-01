@@ -7,8 +7,6 @@ const SECRET = 'whsec_out_test'
 const engine = new ElevenLabsEngine({
   apiKey: 'test',
   webhookSecret: SECRET,
-  twilioAccountSid: 'AC_test',
-  twilioAuthToken: 'test',
 })
 
 describe('signBody', () => {

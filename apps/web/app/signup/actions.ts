@@ -134,7 +134,7 @@ export async function buyNumberAction(e164: string): Promise<{ error?: string }>
   // isn't billed for a dead number (rule 3).
   try {
     const engine = makeEngine(agent!.provider)
-    const { providerNumberId } = await engine.importNumber(bought.twilioSid, bought.e164)
+    const { providerNumberId } = await engine.importNumber(bought.e164, creds)
     await engine.attachNumber(providerNumberId, agent!.provider_agent_id)
     const { error } = await db.from('phone_numbers').insert({
       org_id: org.orgId,

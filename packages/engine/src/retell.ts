@@ -219,7 +219,10 @@ export class RetellEngine implements VoiceEngine {
 
   // --------------------------------------------------------------- numbers
 
-  async importNumber(_twilioSid: string, _e164: string): Promise<{ providerNumberId: string }> {
+  async importNumber(
+    _e164: string,
+    _twilio: { accountSid: string; authToken: string }
+  ): Promise<{ providerNumberId: string }> {
     // ElevenLabs takes Twilio account credentials and does the wiring itself.
     // Retell has no such endpoint: a Twilio number reaches Retell over an
     // elastic SIP trunk, which is exactly what importSipNumber already models.

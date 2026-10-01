@@ -51,9 +51,6 @@ const BASE = 'https://api.elevenlabs.io'
 export interface ElevenLabsEngineOpts {
   apiKey: string
   webhookSecret: string
-  /** Needed by importNumber: ElevenLabs' native Twilio integration takes the creds. */
-  twilioAccountSid: string
-  twilioAuthToken: string
 }
 
 export class ElevenLabsEngine implements VoiceEngine {
@@ -213,15 +210,15 @@ export class ElevenLabsEngine implements VoiceEngine {
     }
   }
 
-  // ElevenLabs wants the Twilio *account* creds, not the number SID — twilioSid is
-  // unused here but stays in the interface (other providers may need it).
-  async importNumber(_twilioSid: string, e164: string) {
+  // ElevenLabs wants the Twilio *account* creds of the account holding the number
+  // — the org's subaccount. Parent creds point it at the wrong account.
+  async importNumber(e164: string, twilio: { accountSid: string; authToken: string }) {
     const res = await this.req('POST', '/v1/convai/phone-numbers', {
       provider: 'twilio',
       phone_number: e164,
       label: e164,
-      sid: this.opts.twilioAccountSid,
-      token: this.opts.twilioAuthToken,
+      sid: twilio.accountSid,
+      token: twilio.authToken,
     })
     return { providerNumberId: res.phone_number_id as string }
   }

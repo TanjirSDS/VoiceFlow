@@ -1829,3 +1829,13 @@ ever sees — rendered a broken image.
   the object in ```json fences or prose. Enum check unchanged.
 - ONLY the classifier moved. learning.ts + generate-agent.ts still call OpenAI with
   OPENAI_API_KEY — a small classifier model shouldn't inherit agent generation.
+
+### Number import uses the org's subaccount creds (2026-10-01)
+- Phase 23 bought numbers in the org's Twilio subaccount but importNumber still
+  handed ElevenLabs the PARENT SID+token (makeEngine opts), so EL looked for the
+  number in the wrong account. VoiceEngine.importNumber is now (e164, twilio
+  {accountSid, authToken}); both callers (numbers + signup actions) pass the
+  orgTwilioCreds they bought with. ElevenLabsEngineOpts lost twilioAccountSid/
+  twilioAuthToken — the engine holds no Twilio creds, so it cannot fall back to the
+  parent. Unit-tested (request body carries the passed creds); NOT live-verified —
+  no real number bought yet.

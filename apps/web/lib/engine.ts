@@ -20,8 +20,6 @@ export function makeEngine(provider?: string | null): VoiceEngine {
       return new ElevenLabsEngine({
         apiKey: env.ELEVENLABS_API_KEY,
         webhookSecret: env.ELEVENLABS_WEBHOOK_SECRET,
-        twilioAccountSid: env.TWILIO_ACCOUNT_SID,
-        twilioAuthToken: env.TWILIO_AUTH_TOKEN,
       })
     case 'retell':
       if (!env.RETELL_API_KEY) {
