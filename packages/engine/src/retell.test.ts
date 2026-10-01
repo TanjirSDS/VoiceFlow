@@ -139,7 +139,7 @@ describe('capabilities Retell does not have', () => {
   // These must THROW, not resolve. A silent no-op would look like a working
   // feature in the UI and leave nothing at the provider.
   it('refuses a Twilio-SID number import and names the alternative', async () => {
-    await expect(engine.importNumber('AC_x', '+15551230000')).rejects.toThrow(/SIP trunk/)
+    await expect(engine.importNumber('+15551230000', { accountSid: 'AC_x', authToken: 't' })).rejects.toThrow(/SIP trunk/)
   })
 
   it('refuses a static test-widget embed', () => {

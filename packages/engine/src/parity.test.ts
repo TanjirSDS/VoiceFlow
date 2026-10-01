@@ -15,8 +15,6 @@ import type { CallEvent } from './types'
 const elevenlabs = new ElevenLabsEngine({
   apiKey: 'test',
   webhookSecret: 'whsec_test',
-  twilioAccountSid: 'AC_test',
-  twilioAuthToken: 'test',
 })
 const retell = new RetellEngine({ apiKey: 'key_test' })
 

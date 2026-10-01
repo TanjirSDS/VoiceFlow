@@ -111,7 +111,7 @@ export async function buyNumberAction(e164: string): Promise<{ error?: string }>
 
   const db = await userClient()
   try {
-    const { providerNumberId } = await makeEngine().importNumber(bought.twilioSid, bought.e164)
+    const { providerNumberId } = await makeEngine().importNumber(bought.e164, creds)
     const { error } = await db.from('phone_numbers').insert({
       org_id: org.orgId,
       e164: bought.e164,

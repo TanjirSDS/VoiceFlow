@@ -6,8 +6,6 @@ import fixture from '../fixtures/post-call-transcription.json'
 const engine = new ElevenLabsEngine({
   apiKey: 'test',
   webhookSecret: 'whsec_test',
-  twilioAccountSid: 'AC_test',
-  twilioAuthToken: 'test',
 })
 
 function sign(body: string, secret: string, t = Math.floor(Date.now() / 1000)) {
@@ -190,6 +188,19 @@ describe('knowledge base + SIP (Phase 13)', () => {
     expect(s3.calls.find((c) => c.method === 'PATCH')!.body.conversation_config.agent.prompt.knowledge_base).toEqual([
       { type: 'text', id: 'kb_new', name: 'New' },
     ])
+  })
+
+  it('importNumber sends the creds of the account the number lives in', async () => {
+    const s = stubFetch()
+    try {
+      await engine.importNumber('+15551234567', { accountSid: 'AC_sub', authToken: 'sub_token' })
+    } finally {
+      s.restore()
+    }
+    expect(s.calls[0]).toMatchObject({
+      url: expect.stringContaining('/v1/convai/phone-numbers'),
+      body: { provider: 'twilio', phone_number: '+15551234567', sid: 'AC_sub', token: 'sub_token' },
+    })
   })
 
   it('importSipNumber builds the nested inbound/outbound trunk config', async () => {
