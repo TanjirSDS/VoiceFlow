@@ -1839,3 +1839,9 @@ ever sees — rendered a broken image.
   twilioAuthToken — the engine holds no Twilio creds, so it cannot fall back to the
   parent. Unit-tested (request body carries the passed creds); NOT live-verified —
   no real number bought yet.
+
+### Railway deploy healthcheck path (2026-10-01)
+- Railway rejects '?' in healthcheckPath (MCP and GraphQL both: "Invalid input"), and
+  Config as Code (railway.json) is deprecated and cannot be attached to new services,
+  so `/api/health?scope=db` could never be set. app/api/health/db/route.ts re-serves
+  the same db-scoped probe at a plain path; the service healthcheck is /api/health/db.

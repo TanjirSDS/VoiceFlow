@@ -7,7 +7,7 @@
   "deploy": {
     "preDeployCommand": ["npm run migrate"],
     "startCommand": "npm run start --workspace web",
-    "healthcheckPath": "/api/health?scope=db",
+    "healthcheckPath": "/api/health/db",
     "healthcheckTimeout": 120,
     "restartPolicyType": "ON_FAILURE"
   }
