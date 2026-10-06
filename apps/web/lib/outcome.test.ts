@@ -27,7 +27,7 @@ describe('outcome extraction', () => {
   it('classifies the fixture transcript from the model response', async () => {
     const fetchFn = fakeOpenAI('{"outcome":"lead_captured","summary":"Caller reported a leaking sink; contact details collected."}')
     const result = await classifyCall(transcript, cfg, fetchFn)
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       outcome: 'lead_captured',
       summary: 'Caller reported a leaking sink; contact details collected.',
     })
@@ -40,8 +40,8 @@ describe('outcome extraction', () => {
   })
 
   it('reads JSON a non-OpenAI model wrapped in fences or prose', () => {
-    expect(parseOutcome('```json\n{"outcome":"booked","summary":"x"}\n```')).toEqual({ outcome: 'booked', summary: 'x' })
-    expect(parseOutcome('Here you go: {"outcome":"spam","summary":"y"}')).toEqual({ outcome: 'spam', summary: 'y' })
+    expect(parseOutcome('```json\n{"outcome":"booked","summary":"x"}\n```')).toMatchObject({ outcome: 'booked', summary: 'x' })
+    expect(parseOutcome('Here you go: {"outcome":"spam","summary":"y"}')).toMatchObject({ outcome: 'spam', summary: 'y' })
   })
 
   it('sends to the configured endpoint and model', async () => {

@@ -30,7 +30,7 @@ export default async function CallsPage({
       db
         .from('calls')
         .select(
-          'id, started_at, direction, from_e164, to_e164, duration_secs, cost_cents, outcome, status, agents(name)',
+          'id, started_at, direction, from_e164, to_e164, duration_secs, cost_cents, outcome, status, judgement, agents(name)',
           { count: 'exact' }
         ),
       filters

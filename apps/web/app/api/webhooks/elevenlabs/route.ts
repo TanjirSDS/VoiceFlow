@@ -1,4 +1,4 @@
-import type { NextRequest } from 'next/server'
+import { after, type NextRequest } from 'next/server'
 import { getEnv, serviceClient } from '@voiceflow/db'
 import { makeEngine } from '../../../../lib/engine'
 import { handleCallWebhook } from '../../../../lib/call-webhook'
@@ -23,7 +23,8 @@ export async function POST(req: NextRequest) {
     (transcript) => classifyCall(transcript, classifierConfig(getEnv())),
     (providerCallId) => emit('call/recorded', { providerCallId }),
     (orgId, ev) =>
-      enqueueWebhookEvent(db, { orgId, eventType: 'call.completed', eventKey: ev.providerCallId, payload: ev })
+      enqueueWebhookEvent(db, { orgId, eventType: 'call.completed', eventKey: ev.providerCallId, payload: ev }),
+    after // S1: judge after the response is sent
   )
   return new Response(res.body, { status: res.status })
 }

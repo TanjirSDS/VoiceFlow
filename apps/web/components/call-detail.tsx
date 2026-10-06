@@ -5,9 +5,11 @@ import { toast } from 'sonner'
 import { updateContactAction } from '../app/contacts/actions'
 import type { CallDetail as CallDetailData } from '../lib/call-detail-data'
 import { formatCents, formatDuration } from '../lib/call-filters'
-import { OUTCOME_COLORS, type Outcome } from '../lib/outcome'
+import { OUTCOME_COLORS, type Judgement, type Outcome } from '../lib/outcome'
 import { CallPlayer } from './call-player'
+import { LeadScoreBadge } from './calls-table'
 import { Button } from './ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { Switch } from './ui/switch'
@@ -78,6 +80,8 @@ export function CallDetail({ detail }: { detail: CallDetailData }) {
           {call.summary ?? 'No summary extracted for this call.'}
         </p>
       </section>
+
+      <JudgementCard judgement={(call.judgement as Judgement | null) ?? null} />
 
       {/* Conversation analysis */}
       {analysis && (analysis.criteria?.length || analysis.sentiment || analysis.success != null) && (
@@ -163,6 +167,51 @@ export function CallDetail({ detail }: { detail: CallDetailData }) {
         </TabsContent>
       </Tabs>
     </div>
+  )
+}
+
+/** S1: Jev's judgement of the call (calls.judgement, written once per finished call). */
+function JudgementCard({ judgement: j }: { judgement: Judgement | null }) {
+  const label = (v: string | null) => (v ? v.replace('_', ' ') : '—')
+  const fields: [string, string][] = j
+    ? [
+        ['Stage', label(j.stage)],
+        ['Intent', j.intent ?? '—'],
+        ['Objection', label(j.objection)],
+        ['Urgency', label(j.urgency)],
+        ['Sentiment', label(j.sentiment)],
+        ['Next action', label(j.next_action)],
+        ...(j.callback_hint ? ([['Callback', j.callback_hint]] as [string, string][]) : []),
+      ]
+    : []
+  return (
+    <Card>
+      <CardHeader className="flex-row items-center justify-between space-y-0 p-4">
+        <CardTitle className="text-sm">Jev judgement</CardTitle>
+        {j && (
+          <span className="flex items-center gap-2 text-xs text-muted-foreground">
+            Lead score <LeadScoreBadge score={j.lead_score} />
+          </span>
+        )}
+      </CardHeader>
+      <CardContent className="space-y-3 p-4 pt-0">
+        {!j ? (
+          <p className="text-sm text-muted-foreground">Not judged yet</p>
+        ) : (
+          <>
+            <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-3">
+              {fields.map(([k, v]) => (
+                <div key={k}>
+                  <dt className="text-muted-foreground">{k}</dt>
+                  <dd>{v}</dd>
+                </div>
+              ))}
+            </dl>
+            {j.reason && <p className="border-l-2 pl-3 text-sm text-muted-foreground">{j.reason}</p>}
+          </>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 

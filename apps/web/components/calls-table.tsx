@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { formatCents, formatDuration, joinedAgentName } from '../lib/call-filters'
+import type { Judgement } from '../lib/outcome'
 import { Badge } from './ui/badge'
 
 export interface CallRow {
@@ -14,7 +15,18 @@ export interface CallRow {
   cost_cents: number | null
   outcome: string | null
   status: string | null
+  judgement: unknown
   agents: unknown
+}
+
+/** S1: Jev's lead score as a pill — 0-49 grey, 50-79 amber, 80+ green. */
+export function LeadScoreBadge({ score }: { score: number | null | undefined }) {
+  if (score == null) return <>—</>
+  return (
+    <Badge variant={score >= 80 ? 'live' : score >= 50 ? 'warn' : 'secondary'} className="tabular-nums">
+      {score}
+    </Badge>
+  )
 }
 
 // Row click sets ?call=<id> (merged with the current filters) so the drawer
@@ -47,12 +59,14 @@ export function CallsTable({
             <th className="px-3 py-2 font-medium">Cost</th>
             <th className="px-3 py-2 font-medium">Outcome</th>
             <th className="px-3 py-2 font-medium">Status</th>
+            <th className="px-3 py-2 font-medium whitespace-nowrap">Lead score</th>
+            <th className="px-3 py-2 font-medium whitespace-nowrap">Next action</th>
           </tr>
         </thead>
         <tbody>
           {rows.length === 0 && (
             <tr>
-              <td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">
+              <td colSpan={10} className="px-3 py-8 text-center text-muted-foreground">
                 No calls match these filters.
               </td>
             </tr>
@@ -79,6 +93,12 @@ export function CallsTable({
                 {c.outcome ? <Badge variant="secondary">{c.outcome.replace('_', ' ')}</Badge> : '—'}
               </td>
               <td className="px-3 py-2">{c.status ?? '—'}</td>
+              <td className="px-3 py-2">
+                <LeadScoreBadge score={(c.judgement as Judgement | null)?.lead_score} />
+              </td>
+              <td className="px-3 py-2 whitespace-nowrap">
+                {(c.judgement as Judgement | null)?.next_action?.replace('_', ' ') ?? '—'}
+              </td>
             </tr>
           ))}
         </tbody>

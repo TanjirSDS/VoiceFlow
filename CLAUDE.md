@@ -1845,3 +1845,35 @@ ever sees — rendered a broken image.
   Config as Code (railway.json) is deprecated and cannot be attached to new services,
   so `/api/health?scope=db` could never be set. app/api/health/db/route.ts re-serves
   the same db-scoped probe at a plain path; the service healthcheck is /api/health/db.
+
+### S1 call judgement (2026-10-06)
+- One classifier call per finished call now returns a JUDGEMENT as well as
+  outcome/summary: intent, lead_score 0-100, stage, objection, urgency, sentiment,
+  next_action, callback_hint, reason. Stored whole in `calls.judgement jsonb` (0023,
+  nullable = "Not judged yet"). outcome/summary keep their columns and deriveOutcome
+  precedence is untouched; `judgement` is the model's raw view, so on an EL-failure
+  call calls.outcome says 'failed' while judgement.outcome keeps the model's label.
+- Accuracy rules live in the prompt (transcript only, null when not evident,
+  lead-score bands 0-20/21-50/51-79/80-100, conservative tie-breaks) AND in
+  parseOutcome: every field past outcome/summary is validated on its own and becomes
+  null when invalid; opt_out forces next_action 'none' + callback_hint null in CODE
+  (a model must never be able to suggest calling back someone who asked to be removed).
+  classifyCall never throws: max_tokens 400, AbortSignal.timeout(15s), any
+  failure → null + one console.warn.
+- MODEL: prod runs `openai/gpt-4.1-mini` through OpenRouter (CLASSIFIER_BASE_URL
+  https://openrouter.ai/api/v1). `typesafe/jev-router` was specified first and REJECTED
+  on measurement: it is a meta-router that picks model + reasoning effort per request
+  (always deepseek-v4.1-flash on Together in practice), spends 250-950 reasoning tokens
+  on this prompt, and on ~1 in 4 ambiguous transcripts thinks aloud INTO the content
+  until max_tokens — no reasoning-effort setting, json_schema strict, require_parameters
+  or retry fixed it (retries fail together: the router decides per transcript). Bench
+  (9 transcripts ×2): jev 14/18 parsed @2000 tokens, 5.5 s p50, $0.00115; gpt-4.1-mini
+  18/18, 1.9 s p50, $0.00048; deepseek-v4.1-flash direct w/ reasoning off 18/18, 3 s,
+  $0.00013.
+- Inngest is not configured in prod, so the inline webhook path is the real one:
+  handleCallWebhook gained an 8th `defer` param; both webhook routes pass next/server
+  `after`, so the 200 goes out before the model call (default awaits — tests unchanged).
+  Verified locally: signed webhook → 200 in 0.19 s with judgement NULL, written ~2 s later.
+- UI: "Jev judgement" card in the call drawer (lead-score pill 0-49 grey / 50-79 amber /
+  80+ green via Badge secondary/warn/live) + Lead score / Next action columns on /calls.
+- Judgements are NOT backfilled onto calls that finished before the deploy.

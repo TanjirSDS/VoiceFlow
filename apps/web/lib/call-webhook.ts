@@ -27,7 +27,10 @@ export async function handleCallWebhook(
   enqueueClassify?: (providerCallId: string) => Promise<boolean>,
   /** Phase 17: fan the finished call out to the org's outbound webhook endpoints
    *  (keyed by provider_call_id so reconcile can't double-send). */
-  emitCallCompleted?: (orgId: string, ev: CallEvent) => Promise<void>
+  emitCallCompleted?: (orgId: string, ev: CallEvent) => Promise<void>,
+  /** S1: the routes pass next/server `after` so the slow judgement runs after
+   *  the 200 is sent. Default awaits inline (tests, scripts). */
+  defer: (task: () => Promise<void>) => unknown = (task) => task()
 ): Promise<{ status: number; body: string }> {
   if (!engine.verifyWebhook({ rawBody, signature })) {
     return { status: 401, body: 'invalid signature' }
@@ -132,19 +135,21 @@ export async function handleCallWebhook(
     // (see deriveOutcome). The Inngest path applies the same precedence itself.
     const queued = enqueueClassify ? await enqueueClassify(ev.providerCallId).catch(() => false) : false
     if (!queued) {
-      const result = classify ? await classify(ev.transcript).catch(() => null) : null
-      const derived = deriveOutcome(result, ev.analysis ?? null)
-      if (derived) {
-        await db
-          .from('calls')
-          .update({ outcome: derived.outcome, summary: derived.summary })
-          .eq('provider_call_id', ev.providerCallId)
-        // Phase 7: same opt-out handling the Inngest classify path does.
-        if (derived.outcome === 'opt_out' && agent?.org_id) {
-          const e164 = externalNumber({ direction: ev.direction, from_e164: ev.fromE164, to_e164: ev.toE164 })
-          if (e164) await recordOptOut(db, agent.org_id, e164).catch((e) => console.error('recordOptOut failed:', e))
+      await defer(async () => {
+        const result = classify ? await classify(ev.transcript).catch(() => null) : null
+        const derived = deriveOutcome(result, ev.analysis ?? null)
+        if (derived) {
+          await db
+            .from('calls')
+            .update({ outcome: derived.outcome, summary: derived.summary, judgement: result?.judgement ?? null })
+            .eq('provider_call_id', ev.providerCallId)
+          // Phase 7: same opt-out handling the Inngest classify path does.
+          if (derived.outcome === 'opt_out' && agent?.org_id) {
+            const e164 = externalNumber({ direction: ev.direction, from_e164: ev.fromE164, to_e164: ev.toE164 })
+            if (e164) await recordOptOut(db, agent.org_id, e164).catch((e) => console.error('recordOptOut failed:', e))
+          }
         }
-      }
+      })
     }
   }
 
