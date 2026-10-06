@@ -68,7 +68,10 @@ const classifyRecordedCall = inngest.createFunction(
     const result = await classifyCall(call.transcript, cfg)
     const derived = deriveOutcome(result, call.analysis)
     if (!derived) return cfg ? 'classifier returned nothing' : 'no analysis, no classifier key — skipped'
-    await db.from('calls').update({ outcome: derived.outcome, summary: derived.summary }).eq('id', call.id)
+    await db
+      .from('calls')
+      .update({ outcome: derived.outcome, summary: derived.summary, judgement: result?.judgement ?? null })
+      .eq('id', call.id)
     // Phase 7: "remove me" → permanent do-not-call entry + scrub pending contacts.
     if (derived.outcome === 'opt_out' && call.org_id) {
       const e164 = externalNumber(call)
