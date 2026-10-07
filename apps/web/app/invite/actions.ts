@@ -68,8 +68,8 @@ export async function acceptInviteAction(
     const userId = user.rows[0].id
     // Better Auth's credential row: provider 'credential', account_id = user id.
     await client.query(
-      `insert into auth.accounts (user_id, account_id, provider_id, password) values ($1, $1::text, 'credential', $2)`,
-      [userId, hash]
+      `insert into auth.accounts (user_id, account_id, provider_id, password) values ($1, $2, 'credential', $3)`,
+      [userId, userId, hash]
     )
     await client.query(`insert into public.org_members (org_id, user_id, role) values ($1, $2, $3)`, [
       invite.org_id,

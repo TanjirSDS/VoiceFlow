@@ -57,7 +57,7 @@ export function TeamManager({
   const [pw, setPw] = useState({ password: '', confirm: '' })
   const [removeTarget, setRemoveTarget] = useState<MemberRow | null>(null)
 
-  const canTouch = (role: string) => actorRole === 'owner' || role !== 'owner'
+  const canTouch = (role: string) => actorRole === 'owner' || (role !== 'owner' && role !== 'reseller')
   const roleOptions = actorRole === 'owner' ? ['owner', 'admin', 'member'] : ['admin', 'member']
 
   function run(action: () => Promise<TeamResult>, onOk: (r: TeamResult) => void) {

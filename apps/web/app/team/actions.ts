@@ -16,8 +16,9 @@ import { activeOrg } from '../../lib/org'
 // serialises every manager action in that workspace, so two owners removing
 // each other cannot both pass the last-owner check.
 //
-// Rules: owner and admin manage users; an admin can never act on an owner (or
-// an owner invite, or grant owner); the last owner cannot be removed or demoted.
+// Rules: owner and admin manage users; an admin can never act on an owner or a
+// reseller (who reaches every client sub-org), on an owner invite, or grant
+// owner; the last owner cannot be removed or demoted.
 
 export interface TeamResult {
   error?: string
@@ -76,7 +77,9 @@ async function member(ctx: Ctx, userId: string): Promise<{ role: string }> {
     userId,
   ])
   if (!rows[0]) throw new Refused('That user is not in this workspace.')
-  if (ctx.actorRole === 'admin' && rows[0].role === 'owner') throw new Refused('Admins cannot change an owner.')
+  if (ctx.actorRole === 'admin' && (rows[0].role === 'owner' || rows[0].role === 'reseller')) {
+    throw new Refused(`Admins cannot change ${rows[0].role === 'owner' ? 'an owner' : 'a reseller'}.`)
+  }
   return rows[0]
 }
 
@@ -227,8 +230,9 @@ export async function changeRoleAction(userId: string, newRole: string): Promise
  *
  * A password opens the whole ACCOUNT, not one workspace. So this is allowed
  * only when the caller manages EVERY workspace the target belongs to (and is
- * an owner wherever the target is one) — otherwise an admin of a small
- * workspace could take over someone who also owns a bigger one. Platform
+ * an owner wherever the target is an owner or reseller) — otherwise an admin
+ * of a small workspace could take over someone who also owns a bigger one —
+ * and it keeps being enforced afterwards (org_password_grants). Platform
  * support accounts are never settable from here.
  */
 export async function setMemberPasswordAction(input: {
@@ -248,30 +252,35 @@ export async function setMemberPasswordAction(input: {
     await ctx.db.query('select 1 from auth.users where id = $1 for no key update', [input.userId])
     const support = await ctx.db.query('select 1 from public.admin_users where user_id = $1', [input.userId])
     if (support.rowCount) throw new Refused('This account has platform access; its password cannot be set here.')
-    const { rows } = await ctx.db.query(
-      `select t.role as target_role, a.role as actor_role
-         from public.org_members t
-         left join public.org_members a on a.org_id = t.org_id and a.user_id = $2
-        where t.user_id = $1`,
-      [input.userId, ctx.actorId]
-    )
-    const outside = rows.some(
-      (r) => !(r.actor_role === 'owner' || r.actor_role === 'admin') || (r.target_role === 'owner' && r.actor_role !== 'owner')
-    )
-    if (outside) {
+    // One definition of the rule, shared with the trigger that keeps enforcing
+    // it after today (0024 password_grant_holds / enforce_password_grants).
+    const { rows } = await ctx.db.query('select public.password_grant_holds($1, $2) as ok', [input.userId, ctx.actorId])
+    if (!rows[0].ok) {
       throw new Refused(
         'This person also belongs to a workspace you do not manage, so you cannot set their password — it would give you access there too.'
       )
     }
     const updated = await ctx.db.query(
-      `update auth.accounts set password = $2, updated_at = now()
-        where user_id = $1 and provider_id = 'credential' and account_id = $1::text`,
-      [input.userId, hash]
+      `update auth.accounts set password = $3, updated_at = now()
+        where user_id = $1 and provider_id = 'credential' and account_id = $2`,
+      [input.userId, input.userId, hash]
     )
     if (!updated.rowCount) {
       await ctx.db.query(
-        `insert into auth.accounts (user_id, account_id, provider_id, password) values ($1, $1::text, 'credential', $2)`,
-        [input.userId, hash]
+        `insert into auth.accounts (user_id, account_id, provider_id, password) values ($1, $2, 'credential', $3)`,
+        [input.userId, input.userId, hash]
+      )
+    }
+    // The setter knows this password, so record it: the 0024 trigger deletes it
+    // the moment the rule above stops holding (they join a workspace the setter
+    // doesn't manage, or the setter loses their role). Your own password is yours.
+    if (input.userId === ctx.actorId) {
+      await ctx.db.query('delete from public.org_password_grants where user_id = $1', [input.userId])
+    } else {
+      await ctx.db.query(
+        `insert into public.org_password_grants (user_id, set_by, password_hash) values ($1, $2, $3)
+         on conflict (user_id) do update set set_by = excluded.set_by, password_hash = excluded.password_hash, created_at = now()`,
+        [input.userId, ctx.actorId, hash]
       )
     }
     // Every session, this device included if they changed their own: the old
