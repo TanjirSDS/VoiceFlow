@@ -20,6 +20,7 @@ import {
   MenuIcon,
   PhoneIcon,
   QaIcon,
+  TeamIcon,
   UsersIcon,
   Waveform,
   type IconProps,
@@ -36,7 +37,13 @@ const SIDEBAR_COOKIE = 'sidebar-collapsed'
 // the icon in components/icons.tsx. Only routes that exist today are listed.
 // Full intended order: Dashboard, Agents, Knowledge Base, Phone Numbers,
 // Call History, Contacts, Campaigns, Analytics, QA, Alerting, Integrations, Billing.
-const NAV: { href: string; label: string; Icon: (p: IconProps) => ReactNode; agencyOnly?: boolean }[] = [
+const NAV: {
+  href: string
+  label: string
+  Icon: (p: IconProps) => ReactNode
+  agencyOnly?: boolean
+  managersOnly?: boolean
+}[] = [
   { href: '/dashboard', label: 'Dashboard', Icon: DashboardIcon },
   { href: '/agents', label: 'Agents', Icon: AgentIcon },
   { href: '/knowledge', label: 'Knowledge Base', Icon: BookIcon },
@@ -51,6 +58,8 @@ const NAV: { href: string; label: string; Icon: (p: IconProps) => ReactNode; age
   // Phase 27. Gated per-org (see ShellData.showAgency), so it is filtered out of
   // NAV rather than absent from it — the canonical order stays in one place.
   { href: '/agency', label: 'Agency', Icon: AgencyIcon, agencyOnly: true },
+  // Owner/admin only (app/team re-checks the role itself; this just hides the link).
+  { href: '/team', label: 'User Management', Icon: TeamIcon, managersOnly: true },
   { href: '/billing', label: 'Billing', Icon: BillingIcon },
 ]
 
@@ -125,7 +134,10 @@ function SidebarBody({
             Workspace
           </p>
         )}
-        {NAV.filter((n) => !n.agencyOnly || data.showAgency).map(({ href, label, Icon }) => {
+        {NAV.filter(
+          (n) =>
+            (!n.agencyOnly || data.showAgency) && (!n.managersOnly || data.role === 'owner' || data.role === 'admin')
+        ).map(({ href, label, Icon }) => {
           const active = isActive(pathname, href)
           const link = (
             <Link

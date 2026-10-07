@@ -128,7 +128,7 @@ async function AdminViewBanner() {
   const jar = await cookies()
   if (!jar.get('admin-view-org')) return null
   const org = await activeOrg()
-  if (org?.role !== 'admin') return null
+  if (org?.role !== 'support') return null
   return (
     <div className="flex items-center justify-center gap-3 bg-foreground px-6 py-2 text-center text-sm font-medium text-background">
       Admin view: {org.name}

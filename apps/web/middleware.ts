@@ -6,6 +6,8 @@ import { getAuth } from './lib/auth'
 const PUBLIC_PREFIXES = [
   '/login',
   '/signup',
+  // The invitee arrives signed out; the token in the path is the credential.
+  '/invite',
   '/auth',
   '/share',
   '/api/auth',
@@ -60,6 +62,7 @@ export async function middleware(req: NextRequest) {
   if (
     user &&
     !path.startsWith('/signup') &&
+    !path.startsWith('/invite') && // an existing account with no workspace yet joins here
     !path.startsWith('/api') &&
     !path.startsWith('/auth') &&
     !path.startsWith('/admin') && // support staff have no memberships

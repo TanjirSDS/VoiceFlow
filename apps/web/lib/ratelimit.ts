@@ -39,10 +39,29 @@ async function getLimiters() {
   return limiters
 }
 
+// Sign-in attempts must never be unlimited, so without Upstash the 'auth'
+// window falls back to this process's memory. Webhooks and the API keep
+// failing open as before.
+// ponytail: per-process, so N instances allow N× the window and a flood of
+// distinct ids evicts the oldest — configure UPSTASH_* before scaling out.
+const memory = new Map<string, number[]>()
+function memoryLimit(kind: keyof typeof WINDOWS, id: string): { success: boolean } {
+  const w = WINDOWS[kind]
+  const windowMs = Number.parseInt(w.window, 10) * 60_000 // every window is in minutes
+  const now = Date.now()
+  const key = `${kind}:${id}`
+  const hits = (memory.get(key) ?? []).filter((t) => now - t < windowMs)
+  if (hits.length >= w.tokens) return { success: false }
+  hits.push(now)
+  memory.set(key, hits)
+  if (memory.size > 50_000) memory.delete(memory.keys().next().value!)
+  return { success: true }
+}
+
 export async function rateLimit(kind: keyof typeof WINDOWS, id: string): Promise<{ success: boolean }> {
   try {
     const l = await getLimiters()
-    if (!l) return { success: true }
+    if (!l) return kind === 'auth' ? memoryLimit(kind, id) : { success: true }
     return await l[kind]!.limit(id)
   } catch (e) {
     // Redis down must not take auth/webhooks down with it — fail open.
