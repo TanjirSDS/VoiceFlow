@@ -1922,6 +1922,11 @@ ever sees — rendered a broken image.
      The rule lives once, in SQL `password_grant_holds()`, used by the action too.
   3. MEDIUM (latent — no UI assigns reseller): admin could set a reseller's password → reseller
      reach. Fix: reseller treated like owner.
+  4. MEDIUM, found by RE-reviewing fix 2: the hash exemption assumed only the user can rewrite
+     their password, but Better Auth's /change-password needs only the CURRENT password — which
+     the setter knows — so the setter could rotate it and slip the trigger. Fix: top-level
+     `disabledPaths: ['/change-password', '/request-password-reset', '/reset-password']` (404,
+     verified; no UI used them). Any future self-service change/reset must clear the grant.
 - Rate limit: prod has no UPSTASH_*, so rateLimit() failed open; the 'auth' window now falls
   back to per-process memory (8 / 15 min per IP and per email) — webhooks/API unchanged.
 - No password reset / self-service change exists (no email in prod). Remove = membership only.

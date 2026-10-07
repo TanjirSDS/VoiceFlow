@@ -55,6 +55,12 @@ function build() {
     // credential row) and owner/admin resets (app/team/actions.ts) — never by
     // self-serve signup, so /sign-up/email is off.
     emailAndPassword: { enabled: true, disableSignUp: true, minPasswordLength: 12 },
+    // Off: a password can change only through app/team/actions.ts, which records
+    // who knows it (org_password_grants). /change-password needs only the current
+    // password, so whoever SET it could rewrite it and slip the 0024 trigger that
+    // deletes a manager-known password once its rule stops holding. The reset
+    // pair stays off until a reset flow is designed with the same rule.
+    disabledPaths: ['/change-password', '/request-password-reset', '/reset-password'],
     plugins: [
       magicLink({
         expiresIn: 15 * 60,
