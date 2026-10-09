@@ -63,8 +63,17 @@ export function validateWorkflow(w: WorkflowGraph | undefined): string[] {
     ids.add(n.id)
   }
   if (!ids.has(w.startNodeId)) errs.push('The Begin node points to a step that no longer exists.')
+  const pairs = new Set<string>()
   for (const e of edges) {
     if (!ids.has(e.from) || !ids.has(e.to)) errs.push('A connection points to a step that no longer exists.')
+    // The provider allows one edge per pair (the reverse direction rides on it), so a
+    // second same-direction connection can't be represented — merge the conditions instead.
+    const key = `${e.from}\0${e.to}`
+    if (pairs.has(key)) {
+      const label = (id: string) => nodeLabel(w.nodes.find((n) => n.id === id) ?? { id, type: 'end' })
+      errs.push(`"${label(e.from)}" connects to "${label(e.to)}" twice — combine them into one connection.`)
+    }
+    pairs.add(key)
   }
 
   const outgoing = new Map<string, WorkflowEdge[]>()

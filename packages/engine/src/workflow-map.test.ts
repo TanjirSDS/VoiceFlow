@@ -103,3 +103,44 @@ describe('workflowFromProvider', () => {
     expect(workflowFromProvider({})).toBeUndefined()
   })
 })
+
+describe('two-way connections (A→B plus B→A)', () => {
+  // EL 422s "Duplicate edge found between A and B" on two edges for one pair (live 2026-10-09);
+  // the reverse direction must ride the same edge as backward_condition.
+  const twoWay: WorkflowGraph = {
+    startNodeId: 'faq',
+    nodes: [
+      { id: 'faq', type: 'conversation', label: 'FAQ' },
+      { id: 'wrap', type: 'conversation', label: 'Wrap-up' },
+      { id: 'end', type: 'end' },
+    ],
+    edges: [
+      { from: 'faq', to: 'wrap', condition: 'Questions answered.' },
+      { from: 'wrap', to: 'faq', condition: 'Another question.' },
+      { from: 'wrap', to: 'end', condition: 'Nothing else.' },
+    ],
+  }
+  const { nodes, edges } = workflowToProvider(twoWay)
+  const pairEdges = Object.entries(edges).filter(([, e]: any) =>
+    [e.source, e.target].sort().join() === 'faq,wrap'
+  )
+
+  it('emits ONE edge for the pair, reverse as backward_condition', () => {
+    expect(pairEdges).toHaveLength(1)
+    const [, e] = pairEdges[0] as [string, any]
+    expect(e.forward_condition).toEqual({ type: 'llm', condition: 'Questions answered.' })
+    expect(e.backward_condition).toEqual({ type: 'llm', condition: 'Another question.' })
+  })
+
+  it("lists the shared edge in BOTH nodes' edge_order, in neutral order", () => {
+    const [id] = pairEdges[0]!
+    expect((nodes.faq as any).edge_order).toEqual([id])
+    expect((nodes.wrap as any).edge_order[0]).toBe(id)
+    expect((nodes.wrap as any).edge_order).toHaveLength(2)
+  })
+
+  it('round-trips back to the two neutral edges', () => {
+    expect(workflowFromProvider({ nodes, edges })!.edges).toEqual(expect.arrayContaining(twoWay.edges))
+    expect(workflowFromProvider({ nodes, edges })!.edges).toHaveLength(3)
+  })
+})

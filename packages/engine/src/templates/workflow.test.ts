@@ -100,6 +100,25 @@ describe('validateWorkflow', () => {
     expect(validateWorkflow(g)).toEqual([])
   })
 
+  it('rejects two same-direction connections between the same steps', () => {
+    const errs = validateWorkflow({ ...good, edges: [...good.edges, { from: 'welcome', to: 'end', condition: 'Bye.' }] })
+    expect(errs.some((e) => e.includes('twice'))).toBe(true)
+  })
+
+  it('allows a two-way pair (A→B and B→A)', () => {
+    const w: WorkflowGraph = {
+      startNodeId: 'a',
+      nodes: [{ id: 'a', type: 'conversation', label: 'A' }, { id: 'b', type: 'conversation', label: 'B' }, { id: 'end', type: 'end' }],
+      edges: [
+        { from: 'a', to: 'b', condition: 'go b' },
+        { from: 'b', to: 'a', condition: 'go a' },
+        { from: 'a', to: 'end', condition: 'done' },
+        { from: 'b', to: 'end', condition: 'done' },
+      ],
+    }
+    expect(validateWorkflow(w)).toEqual([])
+  })
+
   it('rejects a transfer node without a valid E.164 number', () => {
     const g: WorkflowGraph = {
       startNodeId: 'welcome',
