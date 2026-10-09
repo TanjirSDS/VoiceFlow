@@ -67,7 +67,7 @@ export async function requireResellerRead(): Promise<ActiveOrg> {
   if (!org) notFound()
   if (!org.plan.agencyEnabled) notFound()
   if (org.parentOrgId !== null) notFound()
-  if (org.role !== 'owner' && org.role !== 'reseller' && org.role !== 'admin') notFound()
+  if (org.role !== 'owner' && org.role !== 'reseller' && org.role !== 'support') notFound()
   return org
 }
 

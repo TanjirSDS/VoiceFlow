@@ -1,4 +1,4 @@
-import { serviceClient } from '@voiceflow/db'
+import { pool, serviceClient } from '@voiceflow/db'
 
 // Create an org + owner membership for a user. Service-role writes: members
 // can't insert orgs or memberships under RLS (Phase 4 kept membership
@@ -10,6 +10,14 @@ export async function provisionOrg(
   userId: string,
   name: string
 ): Promise<{ orgId?: string; error?: string }> {
+  // An account made from an invite link has not proven its mailbox (0024). It
+  // may join the workspaces it was invited to, but not found new ones: whoever
+  // held the link could otherwise build a workspace "as" a stranger's address
+  // that the stranger inherits — integrations and all — when they first sign in.
+  const { rows } = await pool().query('select email_verified from auth.users where id = $1', [userId])
+  if (!rows[0]?.email_verified) {
+    return { error: 'Confirm your email first — sign in once with a magic link, then create your workspace.' }
+  }
   const svc = serviceClient()
   const { data: starter } = await svc
     .from('plans')

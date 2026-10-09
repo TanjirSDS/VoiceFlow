@@ -1,9 +1,41 @@
 'use server'
 
 import { headers } from 'next/headers'
+import { redirect } from 'next/navigation'
 import { pool } from '@voiceflow/db'
 import { getAuth } from '../../lib/auth'
 import { rateLimit } from '../../lib/ratelimit'
+
+/**
+ * Email + password sign-in. Better Auth verifies the hash and sets the session
+ * cookie (nextCookies); this wrapper exists for the rate limit, which Better
+ * Auth's own limiter does not apply to server-side api calls. Every failure is
+ * the same sentence, so the form is no oracle for which emails have accounts.
+ */
+export async function signInPasswordAction(
+  _prev: { error?: string } | null,
+  formData: FormData
+): Promise<{ error?: string }> {
+  const email = String(formData.get('email') ?? '')
+    .trim()
+    .toLowerCase()
+  const password = String(formData.get('password') ?? '')
+  if (!/.+@.+\..+/.test(email) || !password) return { error: 'Enter your email and password.' }
+  // Better Auth's max; refusing earlier keeps a megabyte "password" out of scrypt.
+  if (password.length > 128) return { error: 'Incorrect email or password.' }
+
+  const h = await headers()
+  const ip = h.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown'
+  const [byIp, byEmail] = await Promise.all([rateLimit('auth', `pw:${ip}`), rateLimit('auth', `pw:${email}`)])
+  if (!byIp.success || !byEmail.success) return { error: 'Too many attempts — try again in a few minutes.' }
+
+  try {
+    await getAuth().api.signInEmail({ body: { email, password }, headers: h })
+  } catch {
+    return { error: 'Incorrect email or password.' }
+  }
+  redirect('/dashboard')
+}
 
 export interface MagicLinkState {
   sent?: boolean

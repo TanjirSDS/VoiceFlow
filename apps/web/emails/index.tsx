@@ -82,6 +82,23 @@ export function MagicLinkEmail({ url, brand }: { url: string; brand: EmailBrand 
   )
 }
 
+export function InviteEmail({ url, orgName, brand }: { url: string; orgName: string; brand: EmailBrand }): ReactElement {
+  return (
+    <Shell brand={brand} preview={`You're invited to ${orgName}`}>
+      <Heading as="h2">Join {orgName}</Heading>
+      <Text>
+        You&apos;ve been invited to the <strong>{orgName}</strong> workspace on {brand.productName}.
+      </Text>
+      <Text>
+        <A brand={brand} href={url}>
+          Accept the invite →
+        </A>
+      </Text>
+      <Text>This link works once and expires in 7 days. If you weren&apos;t expecting it, ignore this email.</Text>
+    </Shell>
+  )
+}
+
 export function WelcomeEmail({ orgName, brand }: { orgName: string; brand: EmailBrand }): ReactElement {
   return (
     <Shell brand={brand} preview={`Your ${brand.productName} workspace is ready`}>

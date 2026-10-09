@@ -109,7 +109,7 @@ export const activeOrg = cache(async (): Promise<ActiveOrg | null> => {
   if (!user) return null
 
   // Phase 6 support impersonation: an admin_users member with the view-as
-  // cookie set browses any org. Role 'admin' never matches the 'owner' gates,
+  // cookie set browses any org. Role 'support' never matches the 'owner' gates,
   // so billing/purchase writes stay blocked. RLS lets the reads through
   // because is_org_member() returns true for admins (migration 0006).
   const viewAs = (await cookies()).get('admin-view-org')?.value
@@ -140,7 +140,7 @@ export const activeOrg = cache(async (): Promise<ActiveOrg | null> => {
         }
         return {
           orgId: org.id,
-          role: 'admin',
+          role: 'support',
           name: org.name,
           minutesCap: org.minutes_cap,
           overagePolicy: org.overage_policy,

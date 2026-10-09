@@ -1877,3 +1877,56 @@ ever sees — rendered a broken image.
 - UI: "Jev judgement" card in the call drawer (lead-score pill 0-49 grey / 50-79 amber /
   80+ green via Badge secondary/warn/live) + Lead score / Next action columns on /calls.
 - Judgements are NOT backfilled onto calls that finished before the deploy.
+
+### User Management (2026-10-07)
+- /team ("User Management" nav, owner/admin only): members (name, email, role, joined), pending
+  invites (resend / copy link, revoke), invite (email + role), role change, change password,
+  remove. /invite/[token] (public): new address → name + password (email locked); address that
+  already has an account → must be SIGNED IN as it, and accepting only adds the membership.
+  /login gained a password form; magic link kept. Better Auth `emailAndPassword {enabled,
+  disableSignUp: true, minPasswordLength: 12}` — password rows come only from invites and resets.
+- ROLE 'admin' (0024): manages users, nothing owner-only (every billing/numbers/integrations gate
+  is still `role === 'owner'`). The support-impersonation sentinel in lib/org.ts WAS the string
+  'admin' — renamed to 'support' (org.ts, layout.tsx, agency/actions.ts) or a real org admin
+  would have passed requireResellerRead. Admins can never act on an owner OR a reseller
+  (reseller reaches every client sub-org via is_parent_reseller), never grant owner, never touch
+  an owner invite; the last owner can't be removed or demoted.
+- Every /team action: one transaction → `select … from orgs for NO KEY UPDATE` (serialises
+  managers per workspace without blocking FK inserts, which take KEY SHARE — FOR UPDATE would
+  deadlock the existing-account accept path) → re-read the actor's role from org_members →
+  act on the ACTIVE org only (rule 8). pool(), not PostgREST: emails live in auth.users and
+  org_members RLS shows users only their own row.
+- org_invites: sha256(token) only, 32 random bytes; single use = the guarded UPDATE
+  (`accepted_at is null and revoked_at is null and expires_at > now()`), not a read. Raw token
+  is never stored, so "copy link" always mints a NEW link (old one dies). RLS on, ZERO
+  policies, revoked from authenticated/anon. One pending invite per (org, email).
+- Accept is ONE pg transaction: claim → insert auth.users (email_verified FALSE) → credential
+  row (provider 'credential', account_id = user id; hash from Better Auth's own
+  `$context.password.hash`) → membership; then `auth.api.signInEmail` — Better Auth's real
+  verify proves the row shape. TRAP: `$1` used as both uuid and `$1::text` → 42P08
+  "inconsistent types deduced"; pass the id twice.
+- SECURITY REVIEW — 3 real defects found and fixed before deploy, each proven in the browser
+  and mutation-checked (trigger dropped → the bad state survives):
+  1. HIGH, pre-account hijack: the inviter can accept their own copied link for a stranger's
+     address. Better Auth's revokeUnprovenAccountAccess drops the password + sessions when the
+     real owner first proves the mailbox, but NOT memberships → the stranger signed up straight
+     into the attacker's workspace. Fix: trigger `users_email_proven` drops invite-derived
+     memberships on the false→true flip, and provisionOrg refuses unproven accounts (else the
+     link-holder builds a workspace "as" the stranger). Cost: a real invitee who later proves
+     their mailbox by magic link must be re-invited; can orphan a workspace whose ONLY owner
+     joined by invite.
+  2. MEDIUM: "setter must manage every workspace the target is in" was point-in-time. Fix:
+     org_password_grants (user, set_by, hash) + trigger on org_members: when the rule stops
+     holding (target joins elsewhere, setter demoted/removed) the setter-known credential and
+     its sessions are deleted. A password the user changed since has another hash → untouched.
+     The rule lives once, in SQL `password_grant_holds()`, used by the action too.
+  3. MEDIUM (latent — no UI assigns reseller): admin could set a reseller's password → reseller
+     reach. Fix: reseller treated like owner.
+  4. MEDIUM, found by RE-reviewing fix 2: the hash exemption assumed only the user can rewrite
+     their password, but Better Auth's /change-password needs only the CURRENT password — which
+     the setter knows — so the setter could rotate it and slip the trigger. Fix: top-level
+     `disabledPaths: ['/change-password', '/request-password-reset', '/reset-password']` (404,
+     verified; no UI used them). Any future self-service change/reset must clear the grant.
+- Rate limit: prod has no UPSTASH_*, so rateLimit() failed open; the 'auth' window now falls
+  back to per-process memory (8 / 15 min per IP and per email) — webhooks/API unchanged.
+- No password reset / self-service change exists (no email in prod). Remove = membership only.
