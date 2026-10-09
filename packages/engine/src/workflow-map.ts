@@ -2,14 +2,15 @@
 // and in elevenlabs.ts (rule 1). Pure functions → unit-tested offline (the analog of
 // save→GET→match). Verified EL schema is documented in the CLAUDE.md Phase 18 log:
 //   workflow = { nodes: Dict<id,node>, edges: Dict<id,edge>, prevent_subagent_loops? }
-//   entry = the node whose type === 'start' (there is NO start_node_id field)
+//   entry = the node whose type === 'start' (there is NO start_node_id field), and its id
+//   MUST be 'start_node' — EL 422s "Workflow must contain a start node" otherwise (live, 2026-10-09)
 //   node types used: start | override_agent (conversation) | phone_number | end
 //   edge = { source, target, forward_condition: {type:'llm',condition} | {type:'unconditional'} }
 //   every node carries position + edge_order (outgoing edge ids, evaluation order)
 
 import type { WorkflowEdge, WorkflowGraph, WorkflowNode } from './types'
 
-const START_ID = 'start'
+const START_ID = 'start_node'
 const START_EDGE_ID = 'edge_start'
 
 /** Deterministic id for the i-th neutral edge, so edge_order can reference it. */
