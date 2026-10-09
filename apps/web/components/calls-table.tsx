@@ -59,8 +59,8 @@ export function CallsTable({
             <th className="px-3 py-2 font-medium">Cost</th>
             <th className="px-3 py-2 font-medium">Outcome</th>
             <th className="px-3 py-2 font-medium">Status</th>
-            <th className="px-3 py-2 font-medium whitespace-nowrap">Lead score</th>
-            <th className="px-3 py-2 font-medium whitespace-nowrap">Next action</th>
+            <th className="px-3 py-2 font-medium">Lead score</th>
+            <th className="px-3 py-2 font-medium">Next action</th>
           </tr>
         </thead>
         <tbody>
