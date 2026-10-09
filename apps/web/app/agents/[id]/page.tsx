@@ -1,6 +1,7 @@
 import { normalizeStoredConfigSafe, type WorkflowKb } from '@voiceflow/engine/templates'
 import { notFound } from 'next/navigation'
 import { AgentBuilder, type BuilderConfig } from '../../../components/agent-builder'
+import { listOpenRouterModels } from '../../../lib/openrouter-models'
 import { CalcomConnectForm } from '../../../components/calcom-connect-form'
 import { AgentKbSection, type AgentKbDoc } from '../../../components/agent-kb-section'
 import { SimulationPanel, type SimTestCase } from '../../../components/simulation-panel'
@@ -29,7 +30,7 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
     .order('version', { ascending: false })
 
   const engine = makeEngine(agent.provider)
-  const voices = await engine.listVoices().catch(() => [])
+  const [voices, openRouterModels] = await Promise.all([engine.listVoices().catch(() => []), listOpenRouterModels()])
 
   const stored = normalizeStoredConfigSafe(agent.config)
   if (!stored) {
@@ -182,6 +183,7 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
       rail={rail}
       simulation={simulation}
       flowKbDocs={flowKbDocs}
+      openRouterModels={openRouterModels}
     />
   )
 }

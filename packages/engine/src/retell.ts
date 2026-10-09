@@ -488,6 +488,10 @@ export class RetellEngine implements VoiceEngine {
     unsupported('public agents — it has no signed/unsigned widget auth toggle')
   }
 
+  async ensureSecret(name: string, value: string): Promise<{ secretId: string }> {
+    return this.createSecret(name, value)
+  }
+
   async createSecret(_name: string, _value: string): Promise<{ secretId: string }> {
     unsupported('workspace secrets — a custom-LLM URL carries its own auth')
   }

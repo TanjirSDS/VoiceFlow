@@ -66,7 +66,14 @@ export interface ElevenLabsEngineOpts {
 // use its KB at all. Retrieval adds ~250 ms per turn. Chunk/length caps keep per-turn
 // context small for voice. https://elevenlabs.io/docs/eleven-agents/customization/knowledge-base/rag
 const RAG_MODEL = 'e5_mistral_7b_instruct'
-const RAG = { enabled: true, max_retrieved_rag_chunks_count: 8, max_documents_length: 15000 }
+// 5 chunks / 8k chars per turn: on the SDS demo call, 8 / 15k made the model read
+// ~15k chars of context before every answer (LLM first-byte 1.2-2.8 s).
+const RAG = { enabled: true, max_retrieved_rag_chunks_count: 5, max_documents_length: 8000 }
+
+// Short acknowledgements a caller says WHILE the agent talks. They shouldn't cut it off;
+// a real interruption still does. Used with EL's curated English defaults.
+const BACKCHANNELS = ['uh-huh', 'mm-hmm', 'mhm', 'yeah', 'right', 'okay', 'got it', 'i see']
+const FILLERS = ['Sure, one moment.', 'Let me check that for you.', 'Good question, just a second.']
 const RAG_WAIT_MS = 90_000
 
 export class ElevenLabsEngine implements VoiceEngine {
@@ -142,8 +149,30 @@ export class ElevenLabsEngine implements VoiceEngine {
     if (cfg.transcription?.keywords) conversation_config.asr = { keywords: cfg.transcription.keywords }
     if (cfg.call?.maxDurationSecs !== undefined)
       conversation_config.conversation = { max_duration_seconds: cfg.call.maxDurationSecs }
-    if (cfg.call?.endOnSilenceSecs !== undefined)
-      conversation_config.turn = { silence_end_call_timeout: cfg.call.endOnSilenceSecs }
+    // Turn-taking lives under conversation_config.turn (TurnConfig, verified 2026-10-09):
+    // turn_eagerness patient|normal|eager, soft_timeout_config (filler while the LLM is slow),
+    // interruption_ignore_terms (backchannels that must not cut the agent off).
+    const turn: Record<string, unknown> = {}
+    if (cfg.call?.endOnSilenceSecs !== undefined) turn.silence_end_call_timeout = cfg.call.endOnSilenceSecs
+    if (cfg.call?.patience) {
+      turn.turn_eagerness = cfg.call.patience
+      turn.interruption_ignore_terms = BACKCHANNELS
+      turn.interruption_ignore_term_languages = ['en']
+      turn.merge_with_default_ignore_terms = true
+    }
+    if (cfg.call?.fillers !== undefined) {
+      turn.soft_timeout_config = cfg.call.fillers
+        ? {
+            timeout_seconds: 1.5,
+            message: FILLERS[0],
+            additional_soft_timeout_messages: FILLERS.slice(1),
+            randomize_fillers: true,
+            max_soft_timeouts_per_generation: 1,
+            disable_until_first_user_message: true,
+          }
+        : { timeout_seconds: -1 }
+    }
+    if (Object.keys(turn).length) conversation_config.turn = turn
 
     const platform_settings: Record<string, unknown> = {}
     if (cfg.analysis) {
@@ -601,6 +630,14 @@ export class ElevenLabsEngine implements VoiceEngine {
   /** POST /v1/convai/secrets {type:'new',name,value} → {secret_id} (verified
    *  2026-07-13). Referenced elsewhere as {secret_id}, so a custom-LLM key lands
    *  at the provider, never in our DB. https://elevenlabs.io/docs/api-reference/workspace/secrets/create */
+  // ponytail: reuses by NAME and never rewrites the value — to rotate the key, delete the
+  // secret in the provider dashboard and the next save recreates it.
+  async ensureSecret(name: string, value: string) {
+    const res = await this.req('GET', '/v1/convai/secrets')
+    const found = (res.secrets as { name: string; secret_id: string }[] | undefined)?.find((s) => s.name === name)
+    return found ? { secretId: found.secret_id } : this.createSecret(name, value)
+  }
+
   async createSecret(name: string, value: string) {
     const res = await this.req('POST', '/v1/convai/secrets', { type: 'new', name, value })
     return { secretId: res.secret_id as string }
