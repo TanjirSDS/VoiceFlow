@@ -3,13 +3,14 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   batchCalls,
   buildLearningMessages,
-  costCents,
   extractSuggestions,
   MAX_BATCH_CHARS,
   MAX_SUGGESTIONS,
   parseSuggestions,
   type CallForLearning,
+  type LearningContext,
 } from './learning'
+import type { ClassifierConfig, Judgement } from './outcome'
 
 const profile: BusinessProfile = {
   businessName: "Joe's Plumbing",
@@ -19,6 +20,15 @@ const profile: BusinessProfile = {
   faqs: [{ q: 'Saturday hours?', a: '9–1.' }],
   greetingStyle: 'friendly',
   voiceId: 'v1',
+}
+
+const ctx: LearningContext = { instructions: 'You answer calls for Joe. Always confirm the address.', profile }
+const cfg: ClassifierConfig = { baseUrl: 'https://openrouter.ai/api/v1', model: 'typesafe/jev-router', apiKey: 'k' }
+
+const verdict: Judgement = {
+  outcome: 'question_answered', summary: 's', intent: 'price check', lead_score: 55, stage: 'considering',
+  objection: 'price', urgency: 'low', sentiment: 'neutral', next_action: 'none', callback_hint: null,
+  reason: 'Caller said it was over budget', model: 'typesafe/jev-router',
 }
 
 function call(id: string, msg: string): CallForLearning {
@@ -41,12 +51,37 @@ describe('transcript batching (token cap)', () => {
     expect(rendered.join('\n\n').length).toBeLessThanOrEqual(MAX_BATCH_CHARS + 2 * rendered.length)
   })
 
-  it('puts business facts and call headers in the prompt', () => {
-    const { messages } = buildLearningMessages(profile, [call('abc-123', 'Do you do gutters?')])
+  it("puts the agent's live instructions, business facts and call headers in the prompt", () => {
+    const { messages } = buildLearningMessages(ctx, [call('abc-123', 'Do you do gutters?')])
+    expect(messages[1].content).toContain('Always confirm the address.')
     expect(messages[1].content).toContain("Joe's Plumbing")
     expect(messages[1].content).toContain('Q: Saturday hours?')
     expect(messages[1].content).toContain('### Call abc-123')
     expect(messages[1].content).toContain('Caller: Do you do gutters?')
+  })
+})
+
+describe("learning from the judge's verdicts", () => {
+  it("renders the judge's verdict under the call header, before the transcript", () => {
+    const { messages } = buildLearningMessages(ctx, [{ ...call('c9', 'Too pricey'), judgement: verdict }])
+    const body = messages[1].content
+    expect(body).toContain('### Call c9')
+    expect(body).toContain('Judge: outcome=question_answered; lead score=55;')
+    expect(body).toContain('objection=price')
+    expect(body).toContain('reason="Caller said it was over budget"')
+    expect(body.indexOf('Judge:')).toBeLessThan(body.indexOf('Caller: Too pricey'))
+  })
+
+  it('works for an agent with no seed profile (freeform / flow agents)', () => {
+    const { messages } = buildLearningMessages({ instructions: 'Be brief.' }, [call('c1', 'hi')])
+    expect(messages[1].content).toContain('Be brief.')
+    expect(messages[1].content).not.toContain('## Business facts')
+  })
+
+  it('tells the model to use the verdicts and to confirm them in the transcript', () => {
+    const { messages } = buildLearningMessages(ctx, [call('c1', 'hi')])
+    expect(messages[0].content).toContain('"Judge:" line')
+    expect(messages[0].content).toContain('confirm the problem in the transcript')
   })
 })
 
@@ -97,10 +132,17 @@ describe('parseSuggestions', () => {
     expect(parseSuggestions(JSON.stringify({ suggestions: many }), valid)).toHaveLength(MAX_SUGGESTIONS)
     expect(parseSuggestions('the model rambled', valid)).toEqual([])
   })
+
+  it('reads the object after reasoning prose that itself contains braces (Jev)', () => {
+    const json = JSON.stringify({
+      suggestions: [{ type: 'prompt_tweak', suggestion: { instruction: 'x' }, evidence: [{ callId: 'c1', quote: 'q' }] }],
+    })
+    expect(parseSuggestions(`Let me think. The shape is {"suggestions": [...]} so:\n${json}`, valid)).toHaveLength(1)
+  })
 })
 
 describe('extractSuggestions', () => {
-  it('returns suggestions plus a cost log from usage', async () => {
+  it("sends to the judge's endpoint and model, and logs the billed cost", async () => {
     const content = JSON.stringify({
       suggestions: [
         {
@@ -115,21 +157,25 @@ describe('extractSuggestions', () => {
         new Response(
           JSON.stringify({
             choices: [{ message: { content } }],
-            usage: { prompt_tokens: 10_000, completion_tokens: 500 },
+            usage: { prompt_tokens: 10_000, completion_tokens: 500, cost: 0.0042 },
           }),
           { status: 200 }
         )
     ) as unknown as typeof fetch
-    const res = await extractSuggestions(profile, [call('c1', 'Are you open Sundays?')], 'sk-test', fetchFn)
+    const res = await extractSuggestions(ctx, [call('c1', 'Are you open Sundays?')], cfg, fetchFn)
     expect(res?.suggestions).toHaveLength(1)
-    // 10k in @ 15¢/M + 500 out @ 60¢/M
-    expect(res?.costCents).toBeCloseTo(costCents(10_000, 500))
-    expect(res?.costCents).toBeCloseTo(0.18, 5)
+    expect(res?.costCents).toBeCloseTo(0.42, 5) // OpenRouter usage.cost is dollars
+    const [url, init] = (fetchFn as unknown as ReturnType<typeof vi.fn>).mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('https://openrouter.ai/api/v1/chat/completions')
+    const body = JSON.parse(String(init.body))
+    expect(body.model).toBe('typesafe/jev-router')
+    expect(body.response_format).toEqual({ type: 'json_object' })
+    expect(body.max_tokens).toBeGreaterThanOrEqual(4000) // room for Jev to reason before the JSON
   })
 
   it('returns null on API failure and empty input', async () => {
     const fail = vi.fn(async () => new Response('nope', { status: 500 })) as unknown as typeof fetch
-    expect(await extractSuggestions(profile, [call('c1', 'hi')], 'sk-test', fail)).toBeNull()
-    expect(await extractSuggestions(profile, [], 'sk-test', fail)).toBeNull()
+    expect(await extractSuggestions(ctx, [call('c1', 'hi')], cfg, fail)).toBeNull()
+    expect(await extractSuggestions(ctx, [], cfg, fail)).toBeNull()
   })
 })

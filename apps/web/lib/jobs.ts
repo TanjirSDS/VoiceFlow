@@ -1,6 +1,5 @@
 import type { ReactElement } from 'react'
 import { getEnv, serviceClient } from '@voiceflow/db'
-import { suggestionTitle } from '@voiceflow/engine/templates'
 import {
   AgentLearningEmail,
   PaymentFailedEmail,
@@ -24,8 +23,7 @@ import {
 } from './health'
 import { dialChunk } from './campaign-runner'
 import { inngest } from './inngest'
-import { extractSuggestions, type CallForLearning } from './learning'
-import { normalizeStoredConfigSafe } from './types'
+import { learnForAgent } from './learn-agent'
 import { externalNumber, recordOptOut } from './opt-out'
 import { classifierConfig, classifyCall, deriveOutcome } from './outcome'
 import { reconcileYesterday } from './reconcile'
@@ -304,18 +302,19 @@ const weeklySummary = inngest.createFunction(
 )
 
 /**
- * Phase 8: Monday 13:00 UTC (an hour before the weekly summary) — every agent
- * on an adaptive plan gets one structured LLM pass over its week of
- * transcripts; results land as pending agent_suggestions rows and the org's
- * owners get the "your agent learned" email. Idempotent per (agent, week):
- * a re-run skips agents that already have rows for the week.
+ * Phase 8, reworked 2026-10-09: Monday 13:00 UTC (an hour before the weekly summary)
+ * every agent on an adaptive plan learns from the judge's verdicts on its week of
+ * calls (lib/learn-agent.ts — also behind the "Learn now" button). Results land as
+ * pending agent_suggestions rows and the org's owners get the "your agent learned"
+ * email. Idempotent per (agent, week): a re-run skips agents that already have rows
+ * for the week, and learnForAgent never re-proposes a pending/applied suggestion.
  */
 const agentLearning = inngest.createFunction(
   { id: 'agent-learning', retries: 1, onFailure: deadLetter, triggers: [{ cron: 'TZ=UTC 0 13 * * 1' }] },
   async ({ step }) => {
     const db = serviceClient()
-    const key = getEnv().OPENAI_API_KEY
-    if (!key) return 'no OPENAI_API_KEY — skipped'
+    const cfg = classifierConfig(getEnv())
+    if (!cfg) return 'no judge model configured — skipped'
 
     const { data: adaptivePlans, error: planErr } = await db
       .from('plans')
@@ -334,57 +333,18 @@ const agentLearning = inngest.createFunction(
     let totalCostCents = 0
     let emailed = 0
     for (const org of orgs ?? []) {
-      const { data: agents } = await db.from('agents').select('id, name, config').eq('org_id', org.id)
+      const { data: agents } = await db.from('agents').select('id, org_id, name, config').eq('org_id', org.id)
       const digest: { agentId: string; agentName: string; titles: string[] }[] = []
 
       for (const agent of agents ?? []) {
         const res = await step.run(`learn-${agent.id}`, async () => {
-          const stored = normalizeStoredConfigSafe(agent.config)
-          if (!stored?.seed) return null // no seed profile → nothing to extract against (Phase 11)
           const { count } = await db
             .from('agent_suggestions')
             .select('id', { count: 'exact', head: true })
             .eq('agent_id', agent.id)
             .eq('week', week)
           if (count) return null // already learned this week
-
-          const { data: calls } = await db
-            .from('calls')
-            .select('id, outcome, transcript')
-            .eq('agent_id', agent.id)
-            .gte('started_at', since.toISOString())
-            .not('transcript', 'is', null)
-            .order('started_at', { ascending: false })
-          const usable = ((calls ?? []) as CallForLearning[]).filter(
-            (c) => Array.isArray(c.transcript) && c.transcript.length > 0
-          )
-          if (!usable.length) return null
-
-          const result = await extractSuggestions(stored.seed, usable, key)
-          if (!result) return null
-          if (result.suggestions.length) {
-            const { error: insErr } = await db.from('agent_suggestions').insert(
-              result.suggestions.map((s) => ({
-                org_id: org.id,
-                agent_id: agent.id,
-                week,
-                type: s.type,
-                suggestion: s.suggestion,
-                evidence: s.evidence,
-              }))
-            )
-            if (insErr) throw new Error(insErr.message)
-          }
-          // item 2: cost-log per run
-          console.log(
-            `agent-learning ${agent.id}: ${usable.length} calls (${result.skippedCalls} over token budget), ` +
-              `${result.suggestions.length} suggestions, ~${result.costCents.toFixed(3)}¢ ` +
-              `(${result.promptTokens}+${result.completionTokens} tokens)`
-          )
-          return {
-            costCents: result.costCents,
-            titles: result.suggestions.map((s) => suggestionTitle(s.type, s.suggestion)),
-          }
+          return learnForAgent(db, agent, cfg, { since, week })
         })
         if (res) {
           totalCostCents += res.costCents

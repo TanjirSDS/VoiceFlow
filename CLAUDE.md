@@ -1946,3 +1946,25 @@ ever sees — rendered a broken image.
 - Flow edges (PR #42): EL allows ONE edge per node pair ("Duplicate edge found between A
   and B"); B→A rides the A→B edge as backward_condition and is listed in both nodes'
   edge_order. validateWorkflow rejects a second same-direction connection.
+
+### Jev judges every call + the agent learns from Jev (2026-10-09)
+- JUDGE = `typesafe/jev-router` (set CLASSIFIER_MODEL). S1 rejected Jev for leaking its
+  reasoning into the reply; the real cause was the 400-token cap: Jev reasons in content
+  BEFORE the JSON and ran out mid-thought (re-measured: 8/12 at 400). At 4000 tokens it
+  parsed 24/24 and labelled 12/12 test calls correctly (p50 4.1 s, p90 5.6 s,
+  ~$0.0007/call — it runs after the 200, so callers never wait). classifyCall: 4000 tokens,
+  60 s timeout, ONE retry on unparseable/5xx (never on 4xx), extractJsonObject tries every
+  '{' (reasoning prose can contain braces), and stamps judgement.model so the card reads
+  "Jev judgement" only when Jev wrote it ("AI judgement" for older/other rows).
+- LEARNING now reads the judge's verdicts. lib/learn-agent.ts learnForAgent (shared by the
+  Monday cron and the new "Learn from recent calls" button): judges any call the per-call
+  job missed (≤30/run, incl. the opt-out write the classify job does) → one pass of the
+  SAME judge model over transcripts + a "Judge:" line per call + the agent's LIVE
+  instructions (global prompt + each flow step's goal — no seed profile needed, so freeform
+  and flow agents learn too) → dedupes against pending/applied suggestions → inserts.
+  No more OPENAI_API_KEY dependency (prod never had one, so learning had never run).
+  json_object, not json_schema (a router doesn't honour schemas). Bench: 3/3 runs gave 2-4
+  grounded suggestions, 28-47 s, ~2¢. Apply stays human (edit prompt → new version).
+- Button: learnNowAction authorizes (plan + getAgentRow pins the ACTIVE org, rule 8) then
+  writes with the service role (agent_suggestions has no member INSERT policy).
+- Reproduce: scripts/bench/{bench-judge,quality,bench-learn}.ts (OPENROUTER_API_KEY).
