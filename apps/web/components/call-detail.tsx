@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import { updateContactAction } from '../app/contacts/actions'
 import type { CallDetail as CallDetailData } from '../lib/call-detail-data'
 import { formatCents, formatDuration } from '../lib/call-filters'
-import { OUTCOME_COLORS, type Judgement, type Outcome } from '../lib/outcome'
+import { judgeName, OUTCOME_COLORS, type Judgement, type Outcome } from '../lib/outcome'
 import { CallPlayer } from './call-player'
 import { LeadScoreBadge } from './calls-table'
 import { Button } from './ui/button'
@@ -170,7 +170,8 @@ export function CallDetail({ detail }: { detail: CallDetailData }) {
   )
 }
 
-/** S1: Jev's judgement of the call (calls.judgement, written once per finished call). */
+/** S1: the judge's verdict on the call (calls.judgement, written once per finished call).
+ *  Titled by the model that wrote it — "Jev judgement" only when Jev actually judged it. */
 function JudgementCard({ judgement: j }: { judgement: Judgement | null }) {
   const label = (v: string | null) => (v ? v.replace('_', ' ') : '—')
   const fields: [string, string][] = j
@@ -187,7 +188,7 @@ function JudgementCard({ judgement: j }: { judgement: Judgement | null }) {
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between space-y-0 p-4">
-        <CardTitle className="text-sm">Jev judgement</CardTitle>
+        <CardTitle className="text-sm">{judgeName(j?.model)} judgement</CardTitle>
         {j && (
           <span className="flex items-center gap-2 text-xs text-muted-foreground">
             Lead score <LeadScoreBadge score={j.lead_score} />

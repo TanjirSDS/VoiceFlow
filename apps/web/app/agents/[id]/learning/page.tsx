@@ -6,6 +6,7 @@ import {
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { SparkleIcon } from '../../../../components/icons'
+import { LearnNowButton } from '../../../../components/learn-now-button'
 import { Badge } from '../../../../components/ui/badge'
 import { Button } from '../../../../components/ui/button'
 import {
@@ -16,7 +17,9 @@ import {
   CardTitle,
 } from '../../../../components/ui/card'
 import { Input } from '../../../../components/ui/input'
+import { getEnv } from '@voiceflow/db'
 import { activeOrg } from '../../../../lib/org'
+import { classifierConfig, judgeName } from '../../../../lib/outcome'
 import { userClient } from '../../../../lib/db'
 import { applySuggestionsAction, dismissSuggestionAction } from '../../actions'
 
@@ -92,6 +95,8 @@ export default async function LearningPage({ params }: { params: Promise<{ id: s
   const pending = suggestions.filter((s) => s.status === 'pending')
   const appliable = pending.filter((s) => s.type !== 'kb_gap')
   const resolved = suggestions.filter((s) => s.status !== 'pending').slice(0, 20)
+  const judgeModel = classifierConfig(getEnv())?.model
+  const judge = judgeName(judgeModel)
 
   return (
     <div className="space-y-6">
@@ -103,23 +108,24 @@ export default async function LearningPage({ params }: { params: Promise<{ id: s
           </div>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight">{agent.name}</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Drafted from last week&apos;s calls. Applying updates the live agent and records a new
-            config version, so anything can be rolled back.
+            {judge} judges every call this agent takes. From those judgements it drafts fixes to the
+            agent&apos;s instructions — each backed by quotes from real calls. Applying updates the live
+            agent and records a new config version, so anything can be rolled back.
           </p>
         </div>
-        <Link
-          className="shrink-0 text-sm font-medium text-muted-foreground hover:text-foreground"
-          href={`/agents/${id}`}
-        >
-          ← Back to agent
-        </Link>
+        <div className="flex shrink-0 flex-col items-end gap-3">
+          <Link className="text-sm font-medium text-muted-foreground hover:text-foreground" href={`/agents/${id}`}>
+            ← Back to agent
+          </Link>
+          {judgeModel && <LearnNowButton agentId={id} judge={judge} />}
+        </div>
       </div>
 
       {pending.length === 0 && (
         <Card>
           <CardContent className="pt-6 text-sm text-muted-foreground">
-            No pending suggestions. New ones arrive every Monday once your agent has a week of
-            calls to learn from.
+            No pending suggestions. {judge} reviews this agent&apos;s calls every Monday — or click
+            &ldquo;Learn from recent calls&rdquo; to run it now.
           </CardContent>
         </Card>
       )}

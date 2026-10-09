@@ -1,28 +1,40 @@
-// Phase 8: one structured LLM pass per agent per week over its transcripts →
-// improvement suggestions with verbatim evidence. Same optional-OPENAI_API_KEY
-// pattern as outcome.ts: no key or any failure → no suggestions, never throws
-// past extractSuggestions' caller.
+// Phase 8, reworked 2026-10-09: the agent learns from the JUDGE's verdicts. One
+// structured pass per agent over its recent calls — each transcript plus the judge's
+// (Jev's) judgement of it — compared against the agent's CURRENT instructions →
+// improvement suggestions with verbatim evidence. Runs on the same OpenAI-compatible
+// endpoint + model as the judge (classifierConfig). No config or any failure → no
+// suggestions; never throws past extractSuggestions' caller.
 
 import type { BusinessProfile, SuggestionPayload, SuggestionType } from '@voiceflow/engine/templates'
 import { SUGGESTION_TYPES } from '@voiceflow/engine/templates'
-
-export const LEARNING_MODEL = 'gpt-4o-mini'
-// gpt-4o-mini list price, cents per 1M tokens — for the per-run cost log only.
-const INPUT_CENTS_PER_M = 15
-const OUTPUT_CENTS_PER_M = 60
+import { extractJsonObject, type ClassifierConfig, type Judgement } from './outcome'
 
 // Token caps (item 2): per-call and whole-prompt character budgets, plus a hard
-// output cap. ~4 chars/token → the prompt stays under ~15k tokens.
+// output cap. ~4 chars/token → the prompt stays under ~20k tokens. The output cap
+// leaves room for a reasoning model (Jev) to think before the JSON.
 export const MAX_CALL_CHARS = 2_000
 export const MAX_BATCH_CHARS = 60_000
-export const MAX_OUTPUT_TOKENS = 1_500
+export const MAX_INSTRUCTION_CHARS = 16_000
+export const MAX_OUTPUT_TOKENS = 8_000
 export const MAX_SUGGESTIONS = 8
 
 export interface CallForLearning {
   id: string
   outcome: string | null
   transcript: { role?: string; message?: string | null }[]
+  judgement?: Judgement | null
 }
+
+/** What the agent already knows: its live instructions, plus the seed profile when it has one. */
+export interface LearningContext {
+  instructions: string
+  profile?: BusinessProfile | null
+}
+
+const judgeLine = (j: Judgement) =>
+  `Judge: outcome=${j.outcome}; lead score=${j.lead_score ?? 'n/a'}; intent=${j.intent ?? 'n/a'}; ` +
+  `objection=${j.objection ?? 'n/a'}; sentiment=${j.sentiment ?? 'n/a'}; next action=${j.next_action ?? 'n/a'}; ` +
+  `reason="${j.reason ?? ''}"`
 
 export interface ExtractedSuggestion {
   type: SuggestionType
@@ -35,7 +47,8 @@ export function renderCall(call: CallForLearning): string {
     .filter((t) => t.message)
     .map((t) => `${t.role === 'agent' ? 'Agent' : 'Caller'}: ${t.message}`)
     .join('\n')
-  return `### Call ${call.id} (outcome: ${call.outcome ?? 'unknown'})\n${lines.slice(0, MAX_CALL_CHARS)}`
+  const judge = call.judgement ? `${judgeLine(call.judgement)}\n` : ''
+  return `### Call ${call.id} (outcome: ${call.outcome ?? 'unknown'})\n${judge}${lines.slice(0, MAX_CALL_CHARS)}`
 }
 
 /** Newest-first until the batch budget is spent; returns how many were dropped. */
@@ -51,7 +64,8 @@ export function batchCalls(calls: CallForLearning[]): { rendered: string[]; skip
   return { rendered, skipped: calls.length - rendered.length }
 }
 
-const SYSTEM_PROMPT = `You review a week of phone-call transcripts handled by an AI voice agent for a small business, and extract concrete improvements to the agent's configuration.
+const SYSTEM_PROMPT = `You review recent phone calls handled by an AI voice agent for a business, and extract concrete improvements to the agent's instructions.
+Each call comes with the transcript and a "Judge:" line — an independent judge's verdict on that call (outcome, lead score, intent, objection, sentiment, next action, reason). Use the verdicts to find what to fix: repeated objections the agent handled badly, negative sentiment, low lead scores on callers who sounded interested, escalations or failures the agent could have avoided, questions it could not answer. Always confirm the problem in the transcript itself before suggesting a fix.
 
 Emit suggestions of exactly these types:
 - faq_addition: a question callers actually asked that the agent could not answer (or answered wrong). Only emit one when a correct answer is evident from the transcripts or the business facts; put the question in "q" and the answer in "a". If the same question was asked in several calls, set "frequency" to the number of calls and cite each as evidence.
@@ -61,75 +75,32 @@ Emit suggestions of exactly these types:
 
 Rules:
 - Every suggestion MUST cite evidence: the call id from the "### Call <id>" header and a short verbatim quote from that transcript.
-- Do not suggest what the business facts already cover. Do not invent facts, prices, or policies.
-- Set "rationale" to one short line on why this helps.
-- At most ${MAX_SUGGESTIONS} suggestions, most impactful first. No suggestions is a fine answer.`
+- Do not suggest what the agent's current instructions already cover. Do not invent facts, prices, or policies.
+- Set "rationale" to one short line on why this helps, citing the judge's verdict when it drove the suggestion.
+- At most ${MAX_SUGGESTIONS} suggestions, most impactful first. No suggestions is a fine answer.
+Reply with JSON only: {"suggestions": [{"type": "...", "suggestion": {...}, "evidence": [{"callId": "...", "quote": "..."}]}]}`
 
-const RESPONSE_FORMAT = {
-  type: 'json_schema',
-  json_schema: {
-    name: 'agent_suggestions',
-    schema: {
-      type: 'object',
-      additionalProperties: false,
-      required: ['suggestions'],
-      properties: {
-        suggestions: {
-          type: 'array',
-          items: {
-            type: 'object',
-            additionalProperties: false,
-            required: ['type', 'suggestion', 'evidence'],
-            properties: {
-              type: { type: 'string', enum: [...SUGGESTION_TYPES] },
-              suggestion: {
-                type: 'object',
-                properties: {
-                  q: { type: 'string' },
-                  a: { type: 'string' },
-                  instruction: { type: 'string' },
-                  topic: { type: 'string' },
-                  frequency: { type: 'integer' },
-                  rationale: { type: 'string' },
-                },
-              },
-              evidence: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  required: ['callId', 'quote'],
-                  properties: { callId: { type: 'string' }, quote: { type: 'string' } },
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-  },
-} as const
-
-export function buildLearningMessages(profile: BusinessProfile, calls: CallForLearning[]) {
+export function buildLearningMessages(ctx: LearningContext, calls: CallForLearning[]) {
   const { rendered, skipped } = batchCalls(calls)
-  const facts = [
-    `Business: ${profile.businessName} (${profile.industry})`,
-    `Hours: ${profile.hours}`,
-    `Services: ${profile.services.join(', ') || '(none listed)'}`,
-    `Current FAQs:\n${profile.faqs.map((f) => `Q: ${f.q}\nA: ${f.a}`).join('\n') || '(none)'}`,
-    profile.extraInstructions?.length
-      ? `Already-applied adjustments:\n${profile.extraInstructions.join('\n')}`
-      : '',
+  const p = ctx.profile
+  const facts = p
+    ? [
+        `Business: ${p.businessName} (${p.industry})`,
+        `Hours: ${p.hours}`,
+        `Services: ${p.services.join(', ') || '(none listed)'}`,
+        `Current FAQs:\n${p.faqs.map((f) => `Q: ${f.q}\nA: ${f.a}`).join('\n') || '(none)'}`,
+      ].join('\n')
+    : ''
+  const sections = [
+    `## The agent's current instructions\n${ctx.instructions.slice(0, MAX_INSTRUCTION_CHARS) || '(none)'}`,
+    facts && `## Business facts\n${facts}`,
+    `## Recent calls with the judge's verdicts (${rendered.length} calls)\n${rendered.join('\n\n')}`,
   ]
-    .filter(Boolean)
-    .join('\n')
   return {
     skipped,
     messages: [
       { role: 'system', content: SYSTEM_PROMPT },
-      {
-        role: 'user',
-        content: `## Business facts\n${facts}\n\n## This week's transcripts (${rendered.length} calls)\n${rendered.join('\n\n')}`,
-      },
+      { role: 'user', content: sections.filter(Boolean).join('\n\n') },
     ],
   }
 }
@@ -137,13 +108,8 @@ export function buildLearningMessages(profile: BusinessProfile, calls: CallForLe
 /** Validate the model output; unknown types, empty evidence, and evidence
  *  pointing at call ids that were never in the batch are dropped. */
 export function parseSuggestions(content: string, validCallIds: Set<string>): ExtractedSuggestion[] {
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(content)
-  } catch {
-    return []
-  }
-  const raw = (parsed as { suggestions?: unknown }).suggestions
+  const parsed = extractJsonObject(content) // tolerates reasoning prose before the object
+  const raw = (parsed as { suggestions?: unknown } | null)?.suggestions
   if (!Array.isArray(raw)) return []
   const out: ExtractedSuggestion[] = []
   for (const item of raw) {
@@ -163,10 +129,6 @@ export function parseSuggestions(content: string, validCallIds: Set<string>): Ex
   return out
 }
 
-export function costCents(promptTokens: number, completionTokens: number): number {
-  return (promptTokens * INPUT_CENTS_PER_M + completionTokens * OUTPUT_CENTS_PER_M) / 1_000_000
-}
-
 export interface LearningResult {
   suggestions: ExtractedSuggestion[]
   skippedCalls: number
@@ -175,27 +137,31 @@ export interface LearningResult {
   costCents: number
 }
 
-/** fetchFn is injectable so tests never talk to OpenAI. */
+/** fetchFn is injectable so tests never talk to a model. */
 export async function extractSuggestions(
-  profile: BusinessProfile,
+  ctx: LearningContext,
   calls: CallForLearning[],
-  apiKey: string,
+  cfg: ClassifierConfig,
   fetchFn: typeof fetch = fetch
 ): Promise<LearningResult | null> {
   if (!calls.length) return null
-  const { messages, skipped } = buildLearningMessages(profile, calls)
-  const res = await fetchFn('https://api.openai.com/v1/chat/completions', {
+  const { messages, skipped } = buildLearningMessages(ctx, calls)
+  const res = await fetchFn(`${cfg.baseUrl}/chat/completions`, {
     method: 'POST',
-    headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
+    headers: { authorization: `Bearer ${cfg.apiKey}`, 'content-type': 'application/json' },
     body: JSON.stringify({
-      model: LEARNING_MODEL,
+      model: cfg.model,
       temperature: 0,
       max_tokens: MAX_OUTPUT_TOKENS,
-      response_format: RESPONSE_FORMAT,
+      response_format: { type: 'json_object' },
       messages,
     }),
+    signal: AbortSignal.timeout(180_000),
   })
-  if (!res.ok) return null
+  if (!res.ok) {
+    console.warn(`learning ${cfg.model} → HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`)
+    return null
+  }
   const data = await res.json()
   const suggestions = parseSuggestions(
     data.choices?.[0]?.message?.content ?? '',
@@ -208,6 +174,7 @@ export async function extractSuggestions(
     skippedCalls: skipped,
     promptTokens,
     completionTokens,
-    costCents: costCents(promptTokens, completionTokens),
+    // OpenRouter reports the billed cost in dollars; other servers may not.
+    costCents: typeof data.usage?.cost === 'number' ? data.usage.cost * 100 : 0,
   }
 }

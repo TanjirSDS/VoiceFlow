@@ -1,7 +1,7 @@
 'use server'
 
 import { randomBytes } from 'node:crypto'
-import { getEnv, type Db } from '@voiceflow/db'
+import { getEnv, serviceClient, type Db } from '@voiceflow/db'
 import type { AgentConfig } from '@voiceflow/engine'
 import {
   applySuggestionToPrompt,
@@ -24,6 +24,8 @@ import { calcomBookingTool } from '../../lib/calcom'
 import { appUrl } from '../../lib/email'
 import { makeEngine } from '../../lib/engine'
 import { generateAgentDraft } from '../../lib/generate-agent'
+import { LEARN_WINDOW_DAYS, learnForAgent, mondayUtc } from '../../lib/learn-agent'
+import { classifierConfig } from '../../lib/outcome'
 import { activeOrg, type ActiveOrg } from '../../lib/org'
 import { userClient } from '../../lib/db'
 import { currentUser } from '../../lib/auth'
@@ -441,6 +443,39 @@ export async function applySuggestionsAction(agentId: string, formData: FormData
   if (markErr) throw new Error(markErr.message)
   revalidatePath(`/agents/${agentId}/learning`)
   revalidatePath(`/agents/${agentId}`)
+}
+
+/**
+ * "Learn now": the agent learns from the judge's verdicts on its recent calls without
+ * waiting for Monday's run. Authorized here (plan + agent pinned to the ACTIVE org,
+ * rule 8); the insert itself needs the service role (agent_suggestions has no member
+ * INSERT policy). Takes ~30-60 s with Jev — the button shows progress.
+ */
+export async function learnNowAction(agentId: string): Promise<{ error?: string; message?: string }> {
+  try {
+    const org = await requireOrg()
+    if (!org.plan.adaptiveEnabled) return { error: 'Agent learning requires the Pro plan.' }
+    const cfg = classifierConfig(getEnv())
+    if (!cfg) return { error: 'No judge model is configured.' }
+    const agent = await getAgentRow(await userClient(), agentId)
+    const now = new Date()
+    const run = await learnForAgent(serviceClient(), agent, cfg, {
+      since: new Date(now.getTime() - LEARN_WINDOW_DAYS * 86_400_000),
+      week: mondayUtc(now),
+    })
+    revalidatePath(`/agents/${agentId}/learning`)
+    if (!run) return { error: 'The judge did not answer — try again in a minute.' }
+    if (!run.calls) return { message: `No calls with a transcript in the last ${LEARN_WINDOW_DAYS} days yet.` }
+    const n = run.titles.length
+    return {
+      message:
+        `Reviewed ${run.calls} call${run.calls === 1 ? '' : 's'}` +
+        (run.judgedNow ? ` (judged ${run.judgedNow} that were missing a judgement)` : '') +
+        (n ? ` — ${n} new suggestion${n === 1 ? '' : 's'} below.` : ' — nothing new to suggest.'),
+    }
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) }
+  }
 }
 
 export async function dismissSuggestionAction(agentId: string, suggestionId: string) {

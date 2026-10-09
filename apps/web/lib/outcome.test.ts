@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import fixture from '../../../packages/engine/fixtures/post-call-transcription.json'
-import { buildMessages, classifierConfig, classifyCall, deriveOutcome, parseOutcome } from './outcome'
+import { buildMessages, classifierConfig, classifyCall, deriveOutcome, extractJsonObject, judgeName, parseOutcome } from './outcome'
 
 const transcript = fixture.data.transcript
 const cfg = { baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini', apiKey: 'sk-test' }
@@ -70,6 +70,55 @@ describe('outcome extraction', () => {
     expect(await classifyCall(transcript, null, fetchFn)).toBeNull()
     expect(await classifyCall([], cfg, fetchFn)).toBeNull()
     expect(fetchFn).not.toHaveBeenCalled()
+  })
+})
+
+// 2026-10-09: Jev (typesafe/jev-router) judges calls. It reasons in the reply BEFORE the JSON.
+describe('judging with Jev', () => {
+  const jev = { baseUrl: 'https://openrouter.ai/api/v1', model: 'typesafe/jev-router', apiKey: 'k' }
+  const ok = '{"outcome":"booked","summary":"demo booked","lead_score":90}'
+  const reply = (content: string, status = 200) =>
+    new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status })
+
+  it('finds the object after reasoning prose that contains braces of its own', () => {
+    const content = `The keys are {outcome, summary}. Caller booked a demo, so:\n${ok}`
+    expect(extractJsonObject(content)).toMatchObject({ outcome: 'booked' })
+    expect(parseOutcome(content)?.outcome).toBe('booked')
+    expect(extractJsonObject('no object here')).toBeNull()
+  })
+
+  it('gives the model room to finish reasoning (400 tokens truncated 4 of 12 real calls)', async () => {
+    const fetchFn = vi.fn(async () => reply(ok)) as unknown as typeof fetch
+    await classifyCall(transcript, jev, fetchFn)
+    const body = JSON.parse((fetchFn as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1].body)
+    expect(body.max_tokens).toBeGreaterThanOrEqual(4000)
+    expect(body.model).toBe('typesafe/jev-router')
+  })
+
+  it('stamps the judging model on the judgement, so the UI can say who judged', async () => {
+    const res = await classifyCall(transcript, jev, vi.fn(async () => reply(ok)) as unknown as typeof fetch)
+    expect(res?.judgement?.model).toBe('typesafe/jev-router')
+    expect(judgeName(res?.judgement?.model)).toBe('Jev')
+    expect(judgeName('openai/gpt-4.1-mini')).toBe('AI')
+    expect(judgeName(undefined)).toBe('AI') // judgements written before the model was recorded
+  })
+
+  it('retries once when the first reply runs out mid-thought', async () => {
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(reply('Let me weigh the outcome. The caller said'))
+      .mockResolvedValueOnce(reply(ok)) as unknown as typeof fetch
+    expect((await classifyCall(transcript, jev, fetchFn))?.outcome).toBe('booked')
+    expect(fetchFn).toHaveBeenCalledTimes(2)
+  })
+
+  it('gives up after two failed attempts, and does not retry a 4xx', async () => {
+    const twice = vi.fn(async () => reply('still thinking')) as unknown as typeof fetch
+    expect(await classifyCall(transcript, jev, twice)).toBeNull()
+    expect(twice).toHaveBeenCalledTimes(2)
+    const unauthorized = vi.fn(async () => new Response('bad key', { status: 401 })) as unknown as typeof fetch
+    expect(await classifyCall(transcript, jev, unauthorized)).toBeNull()
+    expect(unauthorized).toHaveBeenCalledTimes(1)
   })
 })
 

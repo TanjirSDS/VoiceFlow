@@ -38,6 +38,8 @@ export interface Judgement {
   next_action: (typeof NEXT_ACTIONS)[number] | null
   callback_hint: string | null
   reason: string | null
+  /** The judging model (e.g. typesafe/jev-router). Absent on judgements written before 2026-10-09. */
+  model?: string
 }
 
 export interface CallOutcome {
@@ -57,6 +59,9 @@ export const OUTCOME_COLORS: Record<Outcome, string> = {
   failed: '#e34948',
   opt_out: '#77777c',
 }
+
+/** Display name of the judge: "Jev" for typesafe/jev-router, otherwise the generic "AI". */
+export const judgeName = (model?: string | null) => (model?.toLowerCase().includes('jev') ? 'Jev' : 'AI')
 
 /** Where the classifier sends transcripts. null = classification off. */
 export interface ClassifierConfig {
@@ -118,15 +123,32 @@ export function buildMessages(transcript: Turn[]) {
   ]
 }
 
+/**
+ * The first JSON object in a reply that parses. Reasoning models (Jev) write their
+ * thinking in prose BEFORE the object, and that prose can contain stray braces, so
+ * try each '{' in turn (outermost first) up to the last '}'.
+ */
+export function extractJsonObject(content: string): any {
+  const end = content.lastIndexOf('}')
+  for (let start = content.indexOf('{'); start !== -1 && start < end; start = content.indexOf('{', start + 1)) {
+    try {
+      return JSON.parse(content.slice(start, end + 1))
+    } catch {
+      /* not this brace — try the next one */
+    }
+  }
+  return null
+}
+
 const oneOf = <T extends readonly string[]>(list: T, v: unknown): T[number] | null =>
   (list as readonly unknown[]).includes(v) ? (v as T[number]) : null
 const text = (v: unknown, max: number) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : null)
 
 export function parseOutcome(content: string): CallOutcome | null {
   try {
-    // Non-OpenAI models often wrap the object in ```json fences or prose.
-    const p = JSON.parse(content.slice(content.indexOf('{'), content.lastIndexOf('}') + 1))
-    if ((OUTCOMES as readonly string[]).includes(p.outcome) && typeof p.summary === 'string') {
+    // Non-OpenAI models wrap the object in ```json fences or reasoning prose.
+    const p = extractJsonObject(content)
+    if (p && (OUTCOMES as readonly string[]).includes(p.outcome) && typeof p.summary === 'string') {
       const summary = p.summary.slice(0, 300)
       const optOut = p.outcome === 'opt_out' // never suggest calling back someone who asked to be removed
       const judgement: Judgement = {
@@ -177,6 +199,13 @@ export function deriveOutcome(
   return null
 }
 
+// Jev (typesafe/jev-router) reasons in the reply BEFORE the JSON. At 400 tokens it ran out
+// mid-thought on 4 of 12 calls; at 4000 it finished 24/24 (bench 2026-10-09: p50 4.1 s,
+// p90 5.6 s, ~$0.0007/call). The judgement itself is ~150 tokens.
+const MAX_TOKENS = 4000
+const TIMEOUT_MS = 60_000
+const ATTEMPTS = 2
+
 /** fetchFn is injectable so the fixture test never talks to a model. */
 export async function classifyCall(
   transcript: unknown,
@@ -187,31 +216,38 @@ export async function classifyCall(
   const messages = buildMessages(transcript as Turn[])
   if (!messages[1].content) return null // nothing said → nothing to classify
 
-  try {
-    const res = await fetchFn(`${cfg.baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: { authorization: `Bearer ${cfg.apiKey}`, 'content-type': 'application/json' },
-      body: JSON.stringify({
-        model: cfg.model,
-        temperature: 0,
-        max_tokens: 400, // the judgement is ~150 tokens
-        response_format: { type: 'json_object' },
-        messages,
-      }),
-      signal: AbortSignal.timeout(15_000),
-    })
-    if (!res.ok) {
-      // Still best-effort, but a misconfigured custom endpoint shouldn't be silent.
-      console.warn(`classifier ${cfg.model} → HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`)
-      return null
+  // A router picks the path per request, so a second attempt can succeed where the first
+  // ran long. Every failure stays best-effort: the call row just stays unjudged.
+  for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
+    try {
+      const res = await fetchFn(`${cfg.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${cfg.apiKey}`, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          model: cfg.model,
+          temperature: 0,
+          max_tokens: MAX_TOKENS,
+          response_format: { type: 'json_object' },
+          messages,
+        }),
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      })
+      if (!res.ok) {
+        // A misconfigured custom endpoint shouldn't be silent; a 4xx won't fix itself.
+        console.warn(`classifier ${cfg.model} → HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`)
+        if (res.status < 500) return null
+        continue
+      }
+      const data = await res.json()
+      const parsed = parseOutcome(data.choices?.[0]?.message?.content ?? '')
+      if (parsed) {
+        if (parsed.judgement) parsed.judgement.model = cfg.model
+        return parsed
+      }
+      console.warn(`classifier ${cfg.model} → unparseable reply (attempt ${attempt}/${ATTEMPTS})`)
+    } catch (e) {
+      console.warn(`classifier ${cfg.model} failed (attempt ${attempt}/${ATTEMPTS}): ${e instanceof Error ? e.message : e}`)
     }
-    const data = await res.json()
-    const parsed = parseOutcome(data.choices?.[0]?.message?.content ?? '')
-    if (!parsed) console.warn(`classifier ${cfg.model} → unparseable reply`)
-    return parsed
-  } catch (e) {
-    // Timeout or network error: the call row just stays unjudged (never fails the caller).
-    console.warn(`classifier ${cfg.model} failed: ${e instanceof Error ? e.message : e}`)
-    return null
   }
+  return null
 }
