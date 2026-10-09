@@ -1968,3 +1968,26 @@ ever sees — rendered a broken image.
 - Button: learnNowAction authorizes (plan + getAgentRow pins the ACTIVE org, rule 8) then
   writes with the service role (agent_suggestions has no member INSERT policy).
 - Reproduce: scripts/bench/{bench-judge,quality,bench-learn}.ts (OPENROUTER_API_KEY).
+
+### Outbound calls on a flow agent (2026-10-09)
+- ONE agent, ONE number, both directions. `WorkflowGraph.outboundStartNodeId` (optional) names
+  the step calls WE place open on; every dial path (campaign runner, POST /api/v1/calls, the
+  Test panel's "Call a number") passes it to `startOutboundCall` as
+  `conversation_initiation_client_data.starting_workflow_node_id`. Absent = outbound calls
+  start at Begin, exactly as before. No migration (it rides agents.config like the rest of the graph).
+- VERIFIED LIVE (2026-10-09, throwaway EL agent, created + deleted): EL accepts a workflow node
+  with NO incoming edge, and a text-only websocket conversation opened with
+  starting_workflow_node_id spoke that node's opening (2/2), while no id spoke the Begin
+  entry's (2/2). So the outbound opening is NOT an edge from the EL start node — nothing in the
+  provider graph points at it. validateWorkflow treats it as a second entry (reachability runs
+  from both; it may have no incoming edge).
+- `simulate-conversation` IGNORES workflow nodes entirely (same probe: neither node's scripted
+  opening appeared, with or without starting_workflow_node_id). So the Simulate panel's
+  "Starting node" picker has never done anything; only real conversations honour it.
+- Canvas: a second synthetic node, "Outbound call", beside Begin. Drag from it to set the step;
+  delete its connection to fall back to Begin; connecting again replaces (one outbound edge).
+- EL's outbound-call answers 200 with `{success:false, conversation_id:null, message}` when it
+  refuses a dial; startOutboundCall now throws on that instead of recording a null call id.
+- "Call a number" (callNumberAction) is a money loop: the exact POST /api/v1/calls guards
+  (outboundCallDecision: opt-out, payment failure, paused agent, concurrency headroom) + a
+  per-call consent attestation, all before the provider is touched.

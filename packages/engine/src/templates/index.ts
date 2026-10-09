@@ -13,6 +13,7 @@ export { ensureDisclosureAndConduct } from './shared'
 export {
   normalizeStoredConfig,
   normalizeStoredConfigSafe,
+  outboundStartNodeId,
   scratchAgentConfig,
   type AgentType,
   type SeedInput,

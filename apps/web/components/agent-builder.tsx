@@ -24,6 +24,7 @@ import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } f
 import { toast } from 'sonner'
 import { convertToFlowAction, updateAgentAction } from '../app/agents/actions'
 import { AgentHandbookDialog } from './agent-handbook-dialog'
+import { CallNumberForm } from './call-number-form'
 import { CustomLlmForm } from './custom-llm-form'
 import { ChevronRightIcon, CopyIcon } from './icons'
 import { SettingsRail, type AgentSettings } from './settings-rail'
@@ -242,7 +243,7 @@ export function AgentBuilder({
               Convert to flow
             </button>
           )}
-          {embed && (
+          {(embed || providerAgentId) && (
             <Button variant="outline" size="sm" onClick={() => setTestOpen(true)}>
               Test
             </Button>
@@ -376,6 +377,11 @@ export function AgentBuilder({
             <p className="mt-1 text-xs text-muted-foreground">
               In-browser test calls start at the Begin node — use Simulate to start at a specific step.
             </p>
+          )}
+          {providerAgentId && (
+            <div className="mt-4">
+              <CallNumberForm agentId={agentId} />
+            </div>
           )}
           {embed && (
             <div className="mt-4">

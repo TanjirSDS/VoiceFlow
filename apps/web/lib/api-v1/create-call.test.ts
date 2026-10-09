@@ -59,7 +59,7 @@ describe('POST /api/v1/calls', () => {
       to: '+15551230000',
       provider_call_id: 'conv_new',
     })
-    expect(startOutboundCall).toHaveBeenCalledWith('el_1', '+15551230000', undefined)
+    expect(startOutboundCall).toHaveBeenCalledWith('el_1', '+15551230000', undefined, undefined)
   })
 
   test('passes dynamic variables through to the agent', async () => {
@@ -67,7 +67,17 @@ describe('POST /api/v1/calls', () => {
     await makeCreateCall(d)(
       ctx({ agent_id: 'a1', to: '+15551230000', variables: { first_name: 'Ada' } }, ACTIVE_AGENT)
     )
-    expect(startOutboundCall).toHaveBeenCalledWith('el_1', '+15551230000', { first_name: 'Ada' })
+    expect(startOutboundCall).toHaveBeenCalledWith('el_1', '+15551230000', { first_name: 'Ada' }, undefined)
+  })
+
+  test("opens a flow agent's call on its outbound step", async () => {
+    const { deps: d, startOutboundCall } = deps()
+    const workflow = { startNodeId: 'welcome', outboundStartNodeId: 'outbound', nodes: [], edges: [] }
+    const config = { agentType: 'flow', template: null, agentConfig: { name: 'A', systemPrompt: '', voiceId: 'v', workflow } }
+    await makeCreateCall(d)(
+      ctx({ agent_id: 'a1', to: '+15551230000' }, { agents: { ...ACTIVE_AGENT.agents, config } })
+    )
+    expect(startOutboundCall).toHaveBeenCalledWith('el_1', '+15551230000', undefined, 'outbound')
   })
 
   test('NEVER dials a number on the opt-out list', async () => {

@@ -299,13 +299,28 @@ export class ElevenLabsEngine implements VoiceEngine {
     return match.phone_number_id as string
   }
 
-  async startOutboundCall(providerAgentId: string, toE164: string, vars?: Record<string, string>) {
+  async startOutboundCall(
+    providerAgentId: string,
+    toE164: string,
+    vars?: Record<string, string>,
+    startNodeId?: string
+  ) {
+    // starting_workflow_node_id needs the agent's enable_starting_workflow_node_id_from_client
+    // (set on every flow agent in toProviderConfig). Verified live 2026-10-09: a node with no
+    // incoming edge is accepted, and the conversation opens on it.
+    const initiation = {
+      ...(vars && { dynamic_variables: vars }),
+      ...(startNodeId && { starting_workflow_node_id: startNodeId }),
+    }
     const res = await this.req('POST', '/v1/convai/twilio/outbound-call', {
       agent_id: providerAgentId,
       agent_phone_number_id: await this.phoneNumberIdFor(providerAgentId),
       to_number: toE164,
-      ...(vars && { conversation_initiation_client_data: { dynamic_variables: vars } }),
+      ...(Object.keys(initiation).length && { conversation_initiation_client_data: initiation }),
     })
+    // 200 is not success: the body carries {success, message} and a null conversation_id
+    // when the dial was refused — that must not be recorded as a call in flight.
+    if (!res.success || !res.conversation_id) throw new Error(res.message || 'Outbound call was not started')
     // conversation_id is the id post-call webhooks reference — that is our providerCallId.
     return { providerCallId: res.conversation_id as string }
   }

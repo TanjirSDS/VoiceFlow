@@ -1,5 +1,6 @@
 import type { Db } from '@voiceflow/db'
 import type { VoiceEngine } from '@voiceflow/engine'
+import { outboundStartNodeId } from '@voiceflow/engine/templates'
 import {
   CHUNK_SIZE,
   clampWindow,
@@ -29,12 +30,16 @@ export async function dialChunk(
 ): Promise<ChunkResult> {
   const { data: campaign } = await db
     .from('campaigns')
-    .select('id, org_id, status, calling_window, spend_cap_cents, agents(status, provider_agent_id)')
+    .select('id, org_id, status, calling_window, spend_cap_cents, agents(status, provider_agent_id, config)')
     .eq('id', campaignId)
     .maybeSingle()
   if (!campaign || campaign.status !== 'running') return { kind: 'stopped' }
 
-  const agent = campaign.agents as unknown as { status: string; provider_agent_id: string | null } | null
+  const agent = campaign.agents as unknown as {
+    status: string
+    provider_agent_id: string | null
+    config: unknown
+  } | null
   if (!agent?.provider_agent_id || agent.status !== 'active') {
     // Cap/dunning pause detached the org's numbers — dialing would just fail.
     return { kind: 'wait', why: 'agent paused' }
@@ -105,13 +110,15 @@ export async function dialChunk(
   const room = await dialDecision(db, campaign.org_id, now)
   if (room.blocked) return { kind: 'throttled', why: room.why ?? 'at concurrency limit' }
 
+  const startNodeId = outboundStartNodeId(agent.config)
   let count = 0
   for (const contact of dialable.slice(0, room.slots)) {
     try {
       const { providerCallId } = await engine.startOutboundCall(
         agent.provider_agent_id,
         contact.e164,
-        (contact.vars ?? undefined) as Record<string, string> | undefined
+        (contact.vars ?? undefined) as Record<string, string> | undefined,
+        startNodeId
       )
       await db
         .from('campaign_contacts')

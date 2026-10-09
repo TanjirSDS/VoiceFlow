@@ -93,6 +93,10 @@ export interface WorkflowEdge {
 export interface WorkflowGraph {
   /** id (within `nodes`) of the entry node the synthetic EL `start` node points at. */
   startNodeId: string
+  /** Optional entry for calls WE place. Not a provider-side edge: outbound dials pass it as
+   *  starting_workflow_node_id, so inbound and outbound share one agent and one number.
+   *  Absent = outbound calls start at startNodeId too. */
+  outboundStartNodeId?: string
   nodes: WorkflowNode[]
   edges: WorkflowEdge[]
 }
@@ -243,10 +247,12 @@ export interface VoiceEngine {
   attachNumber(providerNumberId: string, providerAgentId: string): Promise<void>
   /** Unassign the agent so the number stops answering (cap enforcement). */
   detachNumber(providerNumberId: string): Promise<void>
+  /** `startNodeId` = the flow's outboundStartNodeId, so the call opens on the outbound step. */
   startOutboundCall(
     providerAgentId: string,
     toE164: string,
-    vars?: Record<string, string>
+    vars?: Record<string, string>,
+    startNodeId?: string
   ): Promise<{ providerCallId: string }>
   startBatch(
     providerAgentId: string,

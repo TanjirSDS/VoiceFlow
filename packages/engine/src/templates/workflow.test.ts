@@ -135,3 +135,36 @@ describe('validateWorkflow', () => {
     expect(validateWorkflow(g).some((e) => e.includes('E.164') || e.includes('+14155550123'))).toBe(true)
   })
 })
+
+describe('validateWorkflow — outbound entry', () => {
+  const twoEntries: WorkflowGraph = {
+    startNodeId: 'welcome',
+    outboundStartNodeId: 'outbound',
+    nodes: [
+      { id: 'welcome', type: 'conversation', label: 'Welcome' },
+      { id: 'outbound', type: 'conversation', label: 'Outbound opening' },
+      { id: 'pitch', type: 'conversation', label: 'Pitch' },
+      { id: 'end', type: 'end' },
+    ],
+    edges: [
+      { from: 'welcome', to: 'end' },
+      { from: 'outbound', to: 'pitch' },
+      { from: 'pitch', to: 'end' },
+    ],
+  }
+
+  it('accepts an outbound-only opening and the steps only it reaches', () => {
+    expect(validateWorkflow(twoEntries)).toEqual([])
+  })
+
+  it('without the outbound entry, the same opening is an orphan', () => {
+    const { outboundStartNodeId: _, ...inboundOnly } = twoEntries
+    expect(validateWorkflow(inboundOnly).some((e) => e.includes('"Outbound opening" has no incoming'))).toBe(true)
+  })
+
+  it('flags an outbound entry pointing at a deleted step', () => {
+    expect(validateWorkflow({ ...twoEntries, outboundStartNodeId: 'gone' })).toContain(
+      'The Outbound call node points to a step that no longer exists.'
+    )
+  })
+})

@@ -7,8 +7,10 @@ import {
   applySuggestionToPrompt,
   buildAgentConfig,
   DEFAULT_ANALYSIS,
+  E164,
   ensureDisclosureAndConduct,
   normalizeStoredConfig,
+  outboundStartNodeId,
   validateWorkflow,
   wrapPromptAsFlow,
   type AgentType,
@@ -20,7 +22,9 @@ import {
 } from '@voiceflow/engine/templates'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
+import { outboundCallDecision } from '../../lib/api-v1/shape'
 import { calcomBookingTool } from '../../lib/calcom'
+import { dialDecision } from '../../lib/concurrency'
 import { appUrl } from '../../lib/email'
 import { makeEngine } from '../../lib/engine'
 import { generateAgentDraft } from '../../lib/generate-agent'
@@ -724,6 +728,48 @@ export async function runSimulationAction(agentId: string, id: string, startingN
     if (upErr) throw new Error(upErr.message)
     revalidatePath(`/agents/${agentId}`)
     return { result: last_result }
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) }
+  }
+}
+
+/**
+ * Test panel "Call a number": one outbound call from this agent's number. A money loop
+ * (rule 3), so it takes the exact guards of POST /api/v1/calls — opt-out list, payment
+ * failure, paused agent, concurrency headroom — and every refusal returns before the
+ * provider is touched. Consent is attested per call, like a campaign's.
+ */
+export async function callNumberAction(
+  agentId: string,
+  to: string,
+  consent: boolean
+): Promise<{ error?: string; message?: string }> {
+  const db = await userClient()
+  try {
+    const org = await requireOrg()
+    if (consent !== true) throw new Error('Confirm that this person agreed to be called')
+    const e164 = to.replace(/[\s().-]/g, '')
+    if (!E164.test(e164)) throw new Error('Enter the number with its country code, e.g. +14155550123')
+    const agent = await getAgentRow(db, agentId) // pins the agent to the ACTIVE org (rule 8)
+    const [optOut, room] = await Promise.all([
+      db.from('opt_outs').select('e164').eq('org_id', org.orgId).eq('e164', e164).maybeSingle(),
+      dialDecision(db, org.orgId),
+    ])
+    if (optOut.error) throw new Error(optOut.error.message)
+    const decision = outboundCallDecision({
+      agent,
+      optedOut: !!optOut.data,
+      room: { blocked: room.blocked, slots: room.slots, why: room.why ?? null },
+      paymentFailed: !!org.paymentFailedAt,
+    })
+    if (!decision.allowed) throw new Error(decision.message)
+    await makeEngine(agent.provider).startOutboundCall(
+      agent.provider_agent_id!,
+      e164,
+      undefined,
+      outboundStartNodeId(agent.config)
+    )
+    return { message: `Calling ${e164} now. The call appears in Call History when it ends.` }
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) }
   }

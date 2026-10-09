@@ -2,7 +2,8 @@
 // Conversational-flow canvas (Phase 18). @xyflow/react is fenced to this directory
 // (eslint). Converts the provider-neutral WorkflowGraph ↔ xyflow nodes/edges: the EL
 // `start` node is represented here by a synthetic, non-deletable Begin node whose single
-// edge names the entry (startNodeId). Nothing here persists — the builder owns Save.
+// edge names the entry (startNodeId). A second synthetic node, Outbound call, names the
+// optional outboundStartNodeId the same way. Nothing here persists — the builder owns Save.
 import '@xyflow/react/dist/style.css'
 import {
   addEdge,
@@ -40,6 +41,9 @@ import { flowNodeTypes } from './flow-nodes'
 
 const BEGIN = '__begin__'
 const BEGIN_EDGE = '__begin_edge__'
+const OUTBOUND = '__outbound__'
+const OUTBOUND_EDGE = '__outbound_edge__'
+const isSynthetic = (id: string) => id === BEGIN || id === OUTBOUND
 const edgeTypes = { flow: FlowEdge }
 
 type NodeData = Omit<WorkflowNode, 'id' | 'type' | 'position'>
@@ -54,8 +58,13 @@ const ENTRY_LABELS: { value: WorkflowEntryBehavior; label: string }[] = [
 function toFlow(g: WorkflowGraph): { nodes: Node[]; edges: Edge[] } {
   const entry = g.nodes.find((n) => n.id === g.startNodeId)
   const beginPos = { x: entry?.position?.x ?? 160, y: (entry?.position?.y ?? 60) - 130 }
+  const outEntry = g.nodes.find((n) => n.id === g.outboundStartNodeId)
+  const outPos = outEntry?.position
+    ? { x: outEntry.position.x, y: outEntry.position.y - 130 }
+    : { x: beginPos.x + 240, y: beginPos.y }
   const nodes: Node[] = [
     { id: BEGIN, type: 'begin', position: beginPos, data: {}, deletable: false },
+    { id: OUTBOUND, type: 'begin', position: outPos, data: { outbound: true }, deletable: false },
     ...g.nodes.map((n) => {
       const { id, type, position, ...rest } = n
       return { id, type, position: position ?? { x: 160, y: 60 }, data: rest as NodeData }
@@ -63,6 +72,7 @@ function toFlow(g: WorkflowGraph): { nodes: Node[]; edges: Edge[] } {
   ]
   const edges: Edge[] = [
     { id: BEGIN_EDGE, source: BEGIN, target: g.startNodeId, type: 'flow', data: { editable: false }, deletable: false },
+    ...(g.outboundStartNodeId ? [outboundEdge(g.outboundStartNodeId)] : []),
     ...g.edges.map((e, i) => ({
       id: `e_${i}`,
       source: e.from,
@@ -74,19 +84,29 @@ function toFlow(g: WorkflowGraph): { nodes: Node[]; edges: Edge[] } {
   return { nodes, edges }
 }
 
+// Deletable: removing it sends outbound calls back through Begin.
+const outboundEdge = (target: string): Edge => ({
+  id: OUTBOUND_EDGE,
+  source: OUTBOUND,
+  target,
+  type: 'flow',
+  data: { editable: false },
+})
+
 function fromFlow(nodes: Node[], edges: Edge[]): WorkflowGraph {
   const beginEdge = edges.find((e) => e.source === BEGIN)
-  const startNodeId = beginEdge?.target ?? nodes.find((n) => n.id !== BEGIN)?.id ?? ''
+  const startNodeId = beginEdge?.target ?? nodes.find((n) => !isSynthetic(n.id))?.id ?? ''
+  const outboundStartNodeId = edges.find((e) => e.source === OUTBOUND)?.target
   const wnodes = nodes
-    .filter((n) => n.id !== BEGIN)
+    .filter((n) => !isSynthetic(n.id))
     .map((n) => ({ id: n.id, type: n.type as WorkflowNodeType, position: n.position, ...(n.data as NodeData) }))
   const wedges = edges
-    .filter((e) => e.source !== BEGIN)
+    .filter((e) => !isSynthetic(e.source))
     .map((e) => {
       const c = (e.data as { condition?: string } | undefined)?.condition?.trim()
       return c ? { from: e.source, to: e.target, condition: c } : { from: e.source, to: e.target }
     })
-  return { startNodeId, nodes: wnodes, edges: wedges }
+  return { startNodeId, ...(outboundStartNodeId && { outboundStartNodeId }), nodes: wnodes, edges: wedges }
 }
 
 function makeNode(type: WorkflowNodeType, position: { x: number; y: number }): Node {
@@ -209,6 +229,7 @@ function FlowCanvasInner({
   const selectedNode = nodes.find((n) => n.id === selNode) ?? null
   const selectedEdge = edges.find((e) => e.id === selEdge) ?? null
   const entryId = edges.find((e) => e.source === BEGIN)?.target ?? null
+  const outboundEntryId = edges.find((e) => e.source === OUTBOUND)?.target ?? null
   // Rough token estimate (≈4 chars/token) of the global prompt + every node's instructions.
   const estTokens = useMemo(() => {
     const text =
@@ -319,7 +340,11 @@ function FlowCanvasInner({
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onConnect={(c: Connection) =>
-                setEdges((es) => addEdge({ ...c, type: 'flow', data: { condition: '' } }, es))
+                setEdges((es) =>
+                  c.source === OUTBOUND
+                    ? [...es.filter((e) => e.source !== OUTBOUND), outboundEdge(c.target)]
+                    : addEdge({ ...c, type: 'flow', data: { condition: '' } }, es)
+                )
               }
               onReconnect={(oldEdge, c) => setEdges((es) => reconnectEdge(oldEdge, c, es))}
               onSelectionChange={(p: OnSelectionChangeParams) => {
@@ -331,7 +356,7 @@ function FlowCanvasInner({
               }}
               onBeforeDelete={async ({ nodes: dn, edges: de }) => ({
                 // Never delete Begin, its edge, or the entry node (would strand the start).
-                nodes: dn.filter((n) => n.id !== BEGIN && n.id !== entryId),
+                nodes: dn.filter((n) => !isSynthetic(n.id) && n.id !== entryId),
                 edges: de.filter((e) => e.id !== BEGIN_EDGE),
               })}
               panOnDrag={mode === 'pan'}
@@ -376,7 +401,7 @@ function FlowCanvasInner({
                       if (e.key !== 'Enter') return
                       const q = find.trim().toLowerCase()
                       const hit = getNodes().find(
-                        (n) => n.id !== BEGIN && String((n.data as NodeData).label ?? n.type).toLowerCase().includes(q)
+                        (n) => !isSynthetic(n.id) && String((n.data as NodeData).label ?? n.type).toLowerCase().includes(q)
                       )
                       if (hit) {
                         setCenter(hit.position.x + 95, hit.position.y + 38, { zoom: 1.2, duration: 400 })
@@ -412,11 +437,11 @@ function FlowCanvasInner({
           </div>
           <div className="flex-1 overflow-y-auto p-4">
             {rightTab === 'node' ? (
-              selectedNode && selectedNode.id !== BEGIN ? (
+              selectedNode && !isSynthetic(selectedNode.id) ? (
                 <NodeConfig
                   key={selectedNode.id}
                   node={selectedNode}
-                  isEntry={selectedNode.id === entryId}
+                  isEntry={selectedNode.id === entryId || selectedNode.id === outboundEntryId}
                   kbDocs={kbDocs}
                   onChange={(patch) => updateNodeData(selectedNode.id, patch)}
                   onDelete={() => removeNode(selectedNode.id)}
@@ -425,6 +450,12 @@ function FlowCanvasInner({
                 <BeginConfig
                   entryNode={nodes.find((n) => n.id === entryId) ?? null}
                   onEntryBehavior={(b) => entryId && updateNodeData(entryId, { entryBehavior: b })}
+                />
+              ) : selectedNode?.id === OUTBOUND ? (
+                <BeginConfig
+                  outbound
+                  entryNode={nodes.find((n) => n.id === outboundEntryId) ?? null}
+                  onEntryBehavior={(b) => outboundEntryId && updateNodeData(outboundEntryId, { entryBehavior: b })}
                 />
               ) : selectedEdge ? (
                 <EdgeConfig
@@ -525,7 +556,7 @@ function NodeConfig({
           )}
           {isEntry && (
             <p className="text-[11px] text-muted-foreground">
-              This is the first step. Set who speaks first on the Begin node.
+              This is a first step. Set who speaks first on its Begin or Outbound call node.
             </p>
           )}
           {kbDocs.length > 0 && (
@@ -574,15 +605,32 @@ function NodeConfig({
 function BeginConfig({
   entryNode,
   onEntryBehavior,
+  outbound = false,
 }: {
   entryNode: Node | null
   onEntryBehavior: (b: WorkflowEntryBehavior) => void
+  outbound?: boolean
 }) {
   const current = (entryNode?.data as NodeData | undefined)?.entryBehavior ?? 'generate_immediately'
+  if (outbound && !entryNode) {
+    return (
+      <div className="space-y-3">
+        <h3 className="text-sm font-semibold">Outbound call</h3>
+        <p className="text-xs text-muted-foreground">
+          Calls this agent places (campaigns, the API, Call a number) start at Begin. To open them
+          differently, drag from this node to the step they should start on.
+        </p>
+      </div>
+    )
+  }
   return (
     <div className="space-y-3">
-      <h3 className="text-sm font-semibold">Begin</h3>
-      <p className="text-xs text-muted-foreground">The call enters the flow at the first step.</p>
+      <h3 className="text-sm font-semibold">{outbound ? 'Outbound call' : 'Begin'}</h3>
+      <p className="text-xs text-muted-foreground">
+        {outbound
+          ? 'Calls this agent places start at this step. Delete the connection to start them at Begin.'
+          : 'Incoming calls enter the flow at the first step.'}
+      </p>
       <Label className="block">Who speaks first</Label>
       {entryNode?.type === 'conversation' ? (
         <div className="flex flex-col gap-2">

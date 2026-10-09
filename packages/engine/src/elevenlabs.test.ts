@@ -422,3 +422,57 @@ describe('knowledge base retrieval (RAG)', () => {
     expect(patch.body.conversation_config.agent.prompt.rag).toMatchObject({ enabled: true })
   })
 })
+
+describe('startOutboundCall', () => {
+  function stubDial(dial: Record<string, unknown>) {
+    const calls: { url: string; body: any }[] = []
+    const orig = globalThis.fetch
+    globalThis.fetch = (async (url: string, init: any) => {
+      calls.push({ url: String(url), body: init?.body ? JSON.parse(init.body) : undefined })
+      const json = async () =>
+        String(url).endsWith('/v1/convai/phone-numbers')
+          ? [{ phone_number_id: 'pn_1', assigned_agent: { agent_id: 'agent_1' } }]
+          : dial
+      return { ok: true, status: 200, json, text: async () => '' }
+    }) as unknown as typeof fetch
+    return { calls, restore: () => { globalThis.fetch = orig } }
+  }
+
+  it('opens on the outbound step and carries the contact vars', async () => {
+    const s = stubDial({ success: true, conversation_id: 'conv_1', callSid: 'CA1' })
+    try {
+      const r = await engine.startOutboundCall('agent_1', '+15551234567', { name: 'Ana' }, 'outbound_open')
+      expect(r).toEqual({ providerCallId: 'conv_1' })
+    } finally {
+      s.restore()
+    }
+    expect(s.calls[1].body).toEqual({
+      agent_id: 'agent_1',
+      agent_phone_number_id: 'pn_1',
+      to_number: '+15551234567',
+      conversation_initiation_client_data: {
+        dynamic_variables: { name: 'Ana' },
+        starting_workflow_node_id: 'outbound_open',
+      },
+    })
+  })
+
+  it('sends no initiation data when there is nothing to send', async () => {
+    const s = stubDial({ success: true, conversation_id: 'conv_1' })
+    try {
+      await engine.startOutboundCall('agent_1', '+15551234567')
+    } finally {
+      s.restore()
+    }
+    expect(s.calls[1].body).not.toHaveProperty('conversation_initiation_client_data')
+  })
+
+  it('throws when the provider answers 200 but refuses the dial', async () => {
+    const s = stubDial({ success: false, message: 'Twilio rejected the number', conversation_id: null })
+    try {
+      await expect(engine.startOutboundCall('agent_1', '+15551234567')).rejects.toThrow('Twilio rejected the number')
+    } finally {
+      s.restore()
+    }
+  })
+})
