@@ -535,3 +535,32 @@ describe('turn-taking and shared secrets', () => {
     expect(missing.calls[1]).toMatchObject({ method: 'POST', body: { type: 'new', name: 'openrouter_api_key', value: 'k' } })
   })
 })
+
+describe('switching models', () => {
+  async function bodyOf(cfg: Parameters<typeof engine.updateAgent>[1]) {
+    let body: any
+    const orig = globalThis.fetch
+    globalThis.fetch = (async (_u: string, init: any) => {
+      body = JSON.parse(init.body)
+      return { ok: true, status: 200, json: async () => ({}), text: async () => '' }
+    }) as unknown as typeof fetch
+    try {
+      await engine.updateAgent('agent_1', cfg)
+    } finally {
+      globalThis.fetch = orig
+    }
+    return body.conversation_config.agent.prompt
+  }
+
+  it('a hosted model clears any custom LLM left from an OpenRouter pick (EL 400s otherwise)', async () => {
+    expect(await bodyOf({ llm: 'gemini-2.5-flash' })).toMatchObject({ llm: 'gemini-2.5-flash', custom_llm: null })
+  })
+
+  it('an OpenRouter pick sets custom-llm; a save without a model leaves the provider model alone', async () => {
+    const or = await bodyOf({ customLlm: { url: 'https://openrouter.ai/api/v1', modelId: 'openai/gpt-4.1-mini', apiKeySecretId: 's' } })
+    expect(or.llm).toBe('custom-llm')
+    expect(or.custom_llm).toMatchObject({ model_id: 'openai/gpt-4.1-mini', api_key: { secret_id: 's' } })
+    const none = await bodyOf({ systemPrompt: 'x' })
+    expect('llm' in none || 'custom_llm' in none).toBe(false)
+  })
+})

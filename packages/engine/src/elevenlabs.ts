@@ -133,7 +133,10 @@ export class ElevenLabsEngine implements VoiceEngine {
                   ...(custom.apiKeySecretId && { api_key: { secret_id: custom.apiKeySecretId } }),
                 },
               }
-            : cfg.llm !== undefined && { llm: cfg.llm }),
+            : // PATCH deep-merges, so a custom_llm left from an earlier OpenRouter pick survives a
+              // switch back — and EL then 400s "custom_llm can only be set if llm is set to
+              // CUSTOM_LLM" (live, 2026-10-09). Clear it whenever a hosted model is chosen.
+              cfg.llm !== undefined && { llm: cfg.llm, custom_llm: null }),
         },
       },
     }
