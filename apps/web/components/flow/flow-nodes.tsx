@@ -9,11 +9,14 @@ function box(selected: boolean, tone: string) {
   }`
 }
 
-export function BeginNode({ selected }: NodeProps) {
+export function BeginNode({ data, selected }: NodeProps) {
+  const outbound = !!(data as { outbound?: boolean }).outbound
   return (
     <div className={box(!!selected, 'border-live/50')}>
-      <div className="font-semibold text-live">● Begin</div>
-      <div className="truncate text-muted-foreground">Call starts here</div>
+      <div className="font-semibold text-live">{outbound ? '● Outbound call' : '● Begin'}</div>
+      <div className="truncate text-muted-foreground">
+        {outbound ? 'Calls you place start here' : 'Incoming calls start here'}
+      </div>
       <Handle type="source" position={Position.Bottom} />
     </div>
   )

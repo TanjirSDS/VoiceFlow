@@ -85,6 +85,11 @@ export function normalizeStoredConfigSafe(raw: unknown): StoredAgentConfig | nul
   }
 }
 
+/** The flow step our outbound dials open on (agents.config), or undefined = the normal entry. */
+export function outboundStartNodeId(raw: unknown): string | undefined {
+  return normalizeStoredConfigSafe(raw)?.agentConfig.workflow?.outboundStartNodeId
+}
+
 // Fixed field order (agentType, template, seed?, agentConfig) so a normalized row
 // re-normalizes byte-identically — the migrate script's "changed?" check stays honest.
 function sortSeedLast(c: StoredAgentConfig): StoredAgentConfig {

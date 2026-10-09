@@ -1,5 +1,6 @@
 import type { Db } from '@voiceflow/db'
 import type { VoiceEngine } from '@voiceflow/engine'
+import { outboundStartNodeId } from '@voiceflow/engine/templates'
 import { makeEngine } from '../engine'
 import { dialDecision } from '../concurrency'
 import { apiError, apiOk, type ApiContext, type ApiHandler } from './wrapper'
@@ -118,7 +119,7 @@ export function makeCreateCall(deps: CreateCallDeps = createCallDeps): ApiHandle
     // reads are RLS-scoped, so an agent id belonging to another org simply
     // comes back null and the policy answers 404 — the key cannot reach it.
     const [agentRes, optOutRes, orgRes] = await Promise.all([
-      db.from('agents').select('id, status, provider_agent_id').eq('id', input.agentId).maybeSingle(),
+      db.from('agents').select('id, status, provider_agent_id, config').eq('id', input.agentId).maybeSingle(),
       db.from('opt_outs').select('e164').eq('e164', input.to).maybeSingle(),
       db.from('orgs').select('payment_failed_at').eq('id', orgId).maybeSingle(),
     ])
@@ -137,10 +138,10 @@ export function makeCreateCall(deps: CreateCallDeps = createCallDeps): ApiHandle
     // refusal path, because a refusal that still dials is a billed call.
     if (!decision.allowed) return apiError(decision.status, decision.code, decision.message)
 
-    const agent = agentRes.data as unknown as { provider_agent_id: string }
+    const agent = agentRes.data as unknown as { provider_agent_id: string; config: unknown }
     const { providerCallId } = await deps
       .engine()
-      .startOutboundCall(agent.provider_agent_id, input.to, input.variables)
+      .startOutboundCall(agent.provider_agent_id, input.to, input.variables, outboundStartNodeId(agent.config))
 
     // 202, not 201: the calls row is written at hangup by the post-call webhook,
     // so there is no /calls/{id} to point at yet. Callers poll the list or

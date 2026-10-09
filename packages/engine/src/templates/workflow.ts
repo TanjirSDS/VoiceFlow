@@ -48,9 +48,10 @@ const nodeLabel = (n: WorkflowNode) => n.label?.trim() || n.type.replace('_', ' 
 
 /**
  * Validate a flow before save (client AND server run this — item 5). Returns human-readable
- * errors; empty array = valid. Rules: exactly one start path (one entry, every other node has
- * an incoming edge), no orphan/unreachable nodes, conversation nodes aren't dead-ends and an
- * End is reachable, branch edges carry a non-empty condition, transfer nodes have a valid E.164.
+ * errors; empty array = valid. Rules: one inbound entry (plus an optional outbound entry); every
+ * other node has an incoming edge, no orphan/unreachable nodes, conversation nodes aren't
+ * dead-ends and an End is reachable, branch edges carry a non-empty condition, transfer nodes
+ * have a valid E.164.
  */
 export function validateWorkflow(w: WorkflowGraph | undefined): string[] {
   const errs: string[] = []
@@ -63,6 +64,9 @@ export function validateWorkflow(w: WorkflowGraph | undefined): string[] {
     ids.add(n.id)
   }
   if (!ids.has(w.startNodeId)) errs.push('The Begin node points to a step that no longer exists.')
+  const out = w.outboundStartNodeId
+  if (out && !ids.has(out)) errs.push('The Outbound call node points to a step that no longer exists.')
+  const entries = new Set([w.startNodeId, ...(out ? [out] : [])])
   const pairs = new Set<string>()
   for (const e of edges) {
     if (!ids.has(e.from) || !ids.has(e.to)) errs.push('A connection points to a step that no longer exists.')
@@ -85,9 +89,9 @@ export function validateWorkflow(w: WorkflowGraph | undefined): string[] {
     incoming.set(e.to, (incoming.get(e.to) ?? 0) + 1)
   }
 
-  // Reachability from the single start path.
+  // Reachability from either entry (an outbound-only step is reachable from its own entry).
   const reachable = new Set<string>()
-  const stack = [w.startNodeId]
+  const stack = [...entries]
   while (stack.length) {
     const id = stack.pop()!
     if (reachable.has(id) || !ids.has(id)) continue
@@ -96,7 +100,7 @@ export function validateWorkflow(w: WorkflowGraph | undefined): string[] {
   }
 
   for (const n of w.nodes) {
-    if (n.id !== w.startNodeId) {
+    if (!entries.has(n.id)) {
       if (!incoming.get(n.id)) errs.push(`"${nodeLabel(n)}" has no incoming connection (orphan step).`)
       else if (!reachable.has(n.id)) errs.push(`"${nodeLabel(n)}" can't be reached from the Begin node.`)
     }
