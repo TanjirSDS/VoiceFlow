@@ -73,7 +73,10 @@ const RAG = { enabled: true, max_retrieved_rag_chunks_count: 5, max_documents_le
 // Short acknowledgements a caller says WHILE the agent talks. They shouldn't cut it off;
 // a real interruption still does. Used with EL's curated English defaults.
 const BACKCHANNELS = ['uh-huh', 'mm-hmm', 'mhm', 'yeah', 'right', 'okay', 'got it', 'i see']
-const FILLERS = ['Sure, one moment.', 'Let me check that for you.', 'Good question, just a second.']
+// Neutral acknowledgements only: a filler fires on ANY slow turn — after "I'm busy" or
+// "don't call me" too — so "Good question" / "Let me check that" sounded robotic (seen in
+// end-to-end tests, 2026-10-09).
+const FILLERS = ['Mm-hmm.', 'Okay.', 'Right, one sec.']
 const RAG_WAIT_MS = 90_000
 
 export class ElevenLabsEngine implements VoiceEngine {
