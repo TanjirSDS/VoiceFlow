@@ -25,6 +25,7 @@
     "migrate-agent-config": "tsx scripts/migrate-agent-config.ts",
     "backfill-contacts": "tsx scripts/backfill-contacts.ts",
     "migrate-numbers": "tsx scripts/migrate-numbers-to-subaccounts.ts",
+    "adopt-number": "tsx scripts/adopt-twilio-number.ts",
     "verify-isolation": "tsx scripts/verify-subaccount-isolation.ts"
   },
   "dependencies": {
