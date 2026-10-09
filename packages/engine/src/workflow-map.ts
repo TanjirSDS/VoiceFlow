@@ -33,16 +33,23 @@ export function workflowToProvider(w: WorkflowGraph): {
   const edges: Record<string, unknown> = {}
 
   // Neutral edges → EL edges (id-keyed). Remember each node's outgoing edge ids for edge_order.
+  // EL allows ONE edge per node pair (422 "Duplicate edge found between A and B"), so B→A
+  // when A→B exists becomes that edge's backward_condition, and the edge id joins B's
+  // edge_order too (it is outgoing from B). Verified live 2026-10-09.
   const outgoing: Record<string, string[]> = {}
+  const byPair = new Map<string, string>() // "from\0to" → EL edge id
+  const cond = (c?: string) => (c?.trim() ? { type: 'llm', condition: c.trim() } : { type: 'unconditional' })
   w.edges.forEach((e, i) => {
-    const id = edgeId(i)
-    edges[id] = {
-      source: e.from,
-      target: e.to,
-      forward_condition: e.condition?.trim()
-        ? { type: 'llm', condition: e.condition.trim() }
-        : { type: 'unconditional' },
+    const reverseId = byPair.get(`${e.to}\0${e.from}`)
+    const reverse = reverseId ? (edges[reverseId] as Record<string, unknown>) : undefined
+    if (reverseId && reverse && !reverse.backward_condition) {
+      reverse.backward_condition = cond(e.condition)
+      ;(outgoing[e.from] ??= []).push(reverseId)
+      return
     }
+    const id = edgeId(i)
+    edges[id] = { source: e.from, target: e.to, forward_condition: cond(e.condition) }
+    byPair.set(`${e.from}\0${e.to}`, id)
     ;(outgoing[e.from] ??= []).push(id)
   })
 
@@ -138,15 +145,14 @@ export function workflowFromProvider(raw: unknown): WorkflowGraph | undefined {
     }
   }
 
+  // A backward_condition is the B→A half of a two-way pair: expand it back into its own edge.
+  const llmCond = (c: any) => (c?.type === 'llm' && c.condition ? { condition: c.condition as string } : {})
   const edges: WorkflowEdge[] = edgeEntries
     .filter(([, e]) => e?.source !== startKey)
-    .map(([, e]) => ({
-      from: e.source,
-      to: e.target,
-      ...(e.forward_condition?.type === 'llm' && e.forward_condition.condition
-        ? { condition: e.forward_condition.condition }
-        : {}),
-    }))
+    .flatMap(([, e]) => [
+      { from: e.source, to: e.target, ...llmCond(e.forward_condition) },
+      ...(e.backward_condition ? [{ from: e.target, to: e.source, ...llmCond(e.backward_condition) }] : []),
+    ])
 
   return { startNodeId, nodes, edges }
 }
