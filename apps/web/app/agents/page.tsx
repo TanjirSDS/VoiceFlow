@@ -21,7 +21,11 @@ export default async function AgentsPage() {
   // Resolve voice names once per PROVIDER per request (not per row) and attached
   // numbers. Phase 26: a Retell voice id means nothing to ElevenLabs' catalogue,
   // so asking one provider for every agent's voice name silently blanks the other.
-  const providers = [...new Set((agents ?? []).map((a) => a.provider ?? 'elevenlabs'))]
+  // The default provider always comes first: with zero agents the list was empty, so
+  // the Create modal had no voices and sent voice_id '' (EL 400 on the first agent).
+  const providers = [
+    ...new Set([getEnv().DEFAULT_VOICE_PROVIDER, ...(agents ?? []).map((a) => a.provider ?? 'elevenlabs')]),
+  ]
   const [voiceLists, { data: numbers }] = await Promise.all([
     Promise.all(providers.map((p) => makeEngine(p).listVoices().catch(() => []))),
     db.from('phone_numbers').select('agent_id, e164'),
