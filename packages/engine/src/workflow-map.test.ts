@@ -28,11 +28,11 @@ describe('workflowToProvider', () => {
   const { nodes, edges } = workflowToProvider(graph)
 
   it('synthesizes a start node and its unconditional edge to the entry', () => {
-    expect((nodes.start as any).type).toBe('start')
-    const startEdge = Object.values(edges).find((e: any) => e.source === 'start') as any
+    expect((nodes.start_node as any).type).toBe('start')
+    const startEdge = Object.values(edges).find((e: any) => e.source === 'start_node') as any
     expect(startEdge.target).toBe('welcome')
     expect(startEdge.forward_condition.type).toBe('unconditional')
-    expect((nodes.start as any).edge_order).toHaveLength(1)
+    expect((nodes.start_node as any).edge_order).toHaveLength(1)
   })
 
   it('maps node types to the verified EL type strings', () => {
