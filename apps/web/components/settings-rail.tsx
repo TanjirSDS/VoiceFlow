@@ -27,7 +27,12 @@ import { Switch } from './ui/switch'
 export interface AgentSettings {
   speech: { stability: number; similarityBoost: number; speed: number }
   keywords: string[]
-  call: { maxDurationSecs: number; endOnSilenceSecs: number }
+  call: {
+    maxDurationSecs: number
+    endOnSilenceSecs: number
+    patience: 'patient' | 'normal' | 'eager'
+    fillers: boolean
+  }
   analysis: { dataCollection: DataCollectionField[]; successCriteria: SuccessCriterion[] }
   widgetPublic: boolean
 }
@@ -147,6 +152,35 @@ export function SettingsRail({
               }}
             />
             <p className="mt-1 text-xs text-muted-foreground">Leave blank to never hang up on silence.</p>
+          </div>
+          <div>
+            <Label htmlFor="patience">Turn-taking</Label>
+            <Select
+              id="patience"
+              value={settings.call.patience}
+              onChange={(e) => set('call', { ...settings.call, patience: e.target.value as AgentSettings['call']['patience'] })}
+            >
+              <option value="patient">Patient — lets callers finish their thought (recommended)</option>
+              <option value="normal">Normal</option>
+              <option value="eager">Eager — replies as soon as the caller pauses</option>
+            </Select>
+            <p className="mt-1 text-xs text-muted-foreground">
+              If the caller talks over the agent it stops at once and listens; short acknowledgements like
+              &ldquo;uh-huh&rdquo; don&apos;t cut it off.
+            </p>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <Label htmlFor="fillers">Natural fillers</Label>
+              <p className="text-xs text-muted-foreground">
+                Says &ldquo;Sure, one moment&rdquo; when an answer takes longer than 1.5 s, instead of silence.
+              </p>
+            </div>
+            <Switch
+              id="fillers"
+              checked={settings.call.fillers}
+              onCheckedChange={(v) => set('call', { ...settings.call, fillers: v })}
+            />
           </div>
         </AccordionContent>
       </AccordionItem>

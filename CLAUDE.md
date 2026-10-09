@@ -1991,3 +1991,26 @@ ever sees — rendered a broken image.
 - "Call a number" (callNumberAction) is a money loop: the exact POST /api/v1/calls guards
   (outboundCallDecision: opt-out, payment failure, paused agent, concurrency headroom) + a
   per-call consent attestation, all before the provider is touched.
+
+### Any OpenRouter model + humanized turn-taking (2026-10-09)
+- MODEL PICKER: searchable (cmdk) list of the provider-hosted MODEL_INFO + every OpenRouter
+  model (public GET openrouter.ai/api/v1/models, cached 1 h; 469 on 2026-10-09). Picker value
+  'openrouter:<id>' → AgentConfig.customLlm {url https://openrouter.ai/api/v1, modelId,
+  apiKeySecretId} via applyModelChoice; a hosted id → llm and drops an OpenRouter customLlm
+  (a custom_llm agent's own endpoint is never touched). VERIFIED LIVE: EL custom-LLM →
+  OpenRouter streams + answers (gpt-4.1-mini, claude-haiku-4.5: LLM first byte 0.9-1.0 s).
+  Key: OPENROUTER_API_KEY, else CLASSIFIER_API_KEY when the classifier already points at
+  OpenRouter; stored ONCE as provider secret 'openrouter_api_key' (engine.ensureSecret,
+  reuse-by-name; rotate by deleting it at the provider). No restriction: models without tool
+  calling are labelled "may not work" (EL needs tools to end calls / route flows), reasoning
+  models "slow". Billing for those calls is on the OpenRouter account.
+- TURN-TAKING (AgentConfig.call.patience + .fillers → conversation_config.turn; TurnConfig
+  verified 2026-10-09): turn_eagerness patient|normal|eager; interruption_ignore_terms
+  (uh-huh, mm-hmm, yeah, right, okay…) + EL's curated English defaults so backchannels don't
+  cut the agent off while a real interruption still does; soft_timeout_config = a short
+  filler ("Sure, one moment.") after 1.5 s of LLM silence, suppressed before the caller's
+  first words. Defaults for new agents: patient + fillers. Measured on the demo call: normal
+  turns 1.9-2.3 s, but FLOW STEP CHANGES 5.2-7.5 s — EL first spends a whole LLM round trip
+  on a notify_condition tool call (1.7-3.5 s), then answers. Avoid mid-call step changes.
+- RAG per turn cut to 5 chunks / 8k chars (was 8 / 15k).
+- "Learning" in the builder header is now a real (outline) button.

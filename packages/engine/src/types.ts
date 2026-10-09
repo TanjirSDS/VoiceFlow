@@ -36,8 +36,16 @@ export interface AgentConfig {
   speech?: { stability?: number; similarityBoost?: number; speed?: number }
   /** Realtime ASR tuning. `keywords` bias the transcriber toward domain words. */
   transcription?: { keywords?: string[] }
-  /** Call limits. `endOnSilenceSecs` hangs up after that many seconds of silence. */
-  call?: { maxDurationSecs?: number; endOnSilenceSecs?: number }
+  /** Call limits. `endOnSilenceSecs` hangs up after that many seconds of silence.
+   *  `patience`: how long the agent waits before treating a pause as the end of the
+   *  caller's turn ('patient' lets callers finish thinking aloud). `fillers`: say a short
+   *  "one moment" phrase when the answer takes a while, instead of dead air. */
+  call?: {
+    maxDurationSecs?: number
+    endOnSilenceSecs?: number
+    patience?: 'patient' | 'normal' | 'eager'
+    fillers?: boolean
+  }
   /** Post-call analysis the provider runs: structured data + success criteria (cap 30 each). */
   analysis?: { dataCollection: DataCollectionField[]; successCriteria: SuccessCriterion[] }
   /** `public: false` requires signed auth to talk to the agent (widget/share stop working). */
@@ -302,6 +310,9 @@ export interface VoiceEngine {
    * a custom-LLM API key lands at the provider, never in our database.
    */
   createSecret(name: string, value: string): Promise<{ secretId: string }>
+  /** The id of the provider secret with this name, creating it from `value` if absent.
+   *  Lets one shared key (e.g. OpenRouter) be referenced by every agent without piling up copies. */
+  ensureSecret(name: string, value: string): Promise<{ secretId: string }>
 
   /** All provider calls started in [afterUnix, beforeUnix) — nightly reconciliation. */
   listCalls(afterUnix: number, beforeUnix: number): Promise<ProviderCall[]>

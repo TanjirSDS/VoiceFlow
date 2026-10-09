@@ -30,6 +30,8 @@ import { makeEngine } from '../../lib/engine'
 import { generateAgentDraft } from '../../lib/generate-agent'
 import { LEARN_WINDOW_DAYS, learnForAgent, mondayUtc } from '../../lib/learn-agent'
 import { classifierConfig } from '../../lib/outcome'
+import { applyModelChoice, isOpenRouterChoice } from '../../lib/model-choice'
+import { openRouterKey, openRouterSecretId } from '../../lib/openrouter-models'
 import { activeOrg, type ActiveOrg } from '../../lib/org'
 import { userClient } from '../../lib/db'
 import { currentUser } from '../../lib/auth'
@@ -195,13 +197,12 @@ export async function updateAgentAction(
     const email = await currentUserEmail()
     const agent = await getAgentRow(db, agentId)
     const stored = normalizeStoredConfig(agent.config)
-    const agentConfig: AgentConfig = {
+    let agentConfig: AgentConfig = {
       ...stored.agentConfig,
       name: input.name.trim() || stored.agentConfig.name,
       systemPrompt: input.systemPrompt,
       firstMessage: input.firstMessage,
       voiceId: input.voiceId,
-      ...(input.llm ? { llm: input.llm } : {}),
       ...(input.language ? { language: input.language } : {}),
       ...(input.speech && { speech: input.speech }),
       ...(input.transcription && { transcription: input.transcription }),
@@ -209,6 +210,15 @@ export async function updateAgentAction(
       ...(input.analysis && { analysis: input.analysis }),
       ...(input.widget && { widget: input.widget }),
       ...(input.workflow && { workflow: input.workflow }),
+    }
+    // Model picker: a hosted id → llm; 'openrouter:<id>' → custom LLM through OpenRouter,
+    // authenticated by ONE shared provider secret (the key never reaches our DB or the browser).
+    if (input.llm) {
+      const engine = makeEngine(agent.provider)
+      const secretId = isOpenRouterChoice(input.llm)
+        ? await openRouterSecretId(engine, openRouterKey(getEnv()))
+        : undefined
+      agentConfig = applyModelChoice(agentConfig, input.llm, secretId)
     }
     if (!validConfig(agentConfig)) throw new Error('Name, prompt and voice are required')
     // Server-side gate (item 5): a flow agent must carry a valid graph — the client

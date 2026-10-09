@@ -9,7 +9,14 @@ import type { AgentConfig } from '../types'
 export const SPEECH_DEFAULTS = { stability: 0.5, similarityBoost: 0.8, speed: 1 } as const
 
 /** ElevenLabs call defaults (verified 2026-07-13): 10 min cap, silence-hangup off. */
-export const CALL_DEFAULTS = { maxDurationSecs: 600, endOnSilenceSecs: -1 } as const
+// Humanized turn-taking by default (2026-10-09): wait for callers to finish their thought,
+// and fill a slow answer with a short phrase instead of silence.
+export const CALL_DEFAULTS = {
+  maxDurationSecs: 600,
+  endOnSilenceSecs: -1,
+  patience: 'patient',
+  fillers: true,
+} as const
 
 /**
  * Retell-parity starter analysis for NEW agents: one success criterion + two

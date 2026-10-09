@@ -58,6 +58,9 @@ const schema = z.object({
   EMAIL_FROM: z.string().min(1).optional(),
   /** Optional: absolute origin used in email links, e.g. https://app.voiceflow.io. */
   APP_URL: z.string().url().optional(),
+  /** Optional: OpenRouter key for agents that talk through any OpenRouter model (model picker).
+   *  Falls back to CLASSIFIER_API_KEY when the classifier already points at OpenRouter. */
+  OPENROUTER_API_KEY: z.string().min(1).optional(),
   /** Optional: Inngest (Phase 6 async jobs). Without them the SDK runs in dev mode. */
   INNGEST_EVENT_KEY: z.string().min(1).optional(),
   INNGEST_SIGNING_KEY: z.string().min(1).optional(),

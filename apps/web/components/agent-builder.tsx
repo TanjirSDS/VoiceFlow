@@ -5,7 +5,7 @@ import { useProductName } from './branding-provider'
 // source of truth; Save = one engine.updateAgent + one new version row. Owns the
 // edit state; the server page keys this by current version so a rollback/save
 // remounts it with fresh data.
-import type { Voice } from '@voiceflow/engine'
+import type { AgentConfig, Voice } from '@voiceflow/engine'
 import {
   CALL_DEFAULTS,
   DEFAULT_ANALYSIS,
@@ -26,6 +26,8 @@ import { convertToFlowAction, updateAgentAction } from '../app/agents/actions'
 import { AgentHandbookDialog } from './agent-handbook-dialog'
 import { CallNumberForm } from './call-number-form'
 import { CustomLlmForm } from './custom-llm-form'
+import { ModelPicker } from './model-picker'
+import { isOpenRouterChoice, modelChoiceLabel, modelChoiceOf, type OpenRouterModel } from '../lib/model-choice'
 import { ChevronRightIcon, CopyIcon } from './icons'
 import { SettingsRail, type AgentSettings } from './settings-rail'
 import { ShareDialog } from './share-dialog'
@@ -34,7 +36,7 @@ import { VersionsSheet, type VersionRow } from './versions-sheet'
 import { VoicePickerDialog } from './voice-picker-dialog'
 import type { WidgetEmbed } from './test-widget'
 import { Badge } from './ui/badge'
-import { Button } from './ui/button'
+import { Button, buttonVariants } from './ui/button'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { Select } from './ui/select'
@@ -84,7 +86,7 @@ export interface BuilderConfig {
   // Phase 12 settings (see settings-rail.tsx).
   speech?: { stability?: number; similarityBoost?: number; speed?: number }
   transcription?: { keywords?: string[] }
-  call?: { maxDurationSecs?: number; endOnSilenceSecs?: number }
+  call?: AgentConfig['call']
   analysis?: AgentSettings['analysis']
   widget?: { public?: boolean }
   /** Conversational-flow graph (Phase 18, agent_type 'flow'). */
@@ -104,6 +106,8 @@ function initSettings(config: BuilderConfig): AgentSettings {
     call: {
       maxDurationSecs: config.call?.maxDurationSecs ?? CALL_DEFAULTS.maxDurationSecs,
       endOnSilenceSecs: config.call?.endOnSilenceSecs ?? CALL_DEFAULTS.endOnSilenceSecs,
+      patience: config.call?.patience ?? CALL_DEFAULTS.patience,
+      fillers: config.call?.fillers ?? CALL_DEFAULTS.fillers,
     },
     analysis: structuredClone(config.analysis ?? DEFAULT_ANALYSIS),
     widgetPublic: config.widget?.public ?? true,
@@ -124,6 +128,7 @@ export function AgentBuilder({
   rail,
   simulation,
   flowKbDocs = [],
+  openRouterModels = [],
 }: {
   agentId: string
   providerAgentId: string | null
@@ -140,6 +145,8 @@ export function AgentBuilder({
   simulation?: ReactNode
   /** Org KB docs for node-level attach on flow agents (Phase 18). */
   flowKbDocs?: WorkflowKb[]
+  /** Every OpenRouter model, for the searchable model picker. */
+  openRouterModels?: OpenRouterModel[]
 }) {
   const productName = useProductName()
   const isCustom = agentType === 'custom_llm'
@@ -148,7 +155,8 @@ export function AgentBuilder({
   const [name, setName] = useState(config.name)
   const [prompt, setPrompt] = useState(config.systemPrompt)
   const [voiceId, setVoiceId] = useState(config.voiceId)
-  const [llm, setLlm] = useState(config.llm || DEFAULT_LLM)
+  const initialModel = modelChoiceOf(config, DEFAULT_LLM)
+  const [llm, setLlm] = useState(initialModel)
   const [language, setLanguage] = useState(config.language || 'en')
   const [welcome, setWelcome] = useState<WelcomeMode>(config.firstMessage.trim() ? 'static' : 'user_first')
   const [firstMessage, setFirstMessage] = useState(config.firstMessage)
@@ -167,7 +175,7 @@ export function AgentBuilder({
     name !== config.name ||
     prompt !== config.systemPrompt ||
     voiceId !== config.voiceId ||
-    llm !== (config.llm || DEFAULT_LLM) ||
+    llm !== initialModel ||
     language !== (config.language || 'en') ||
     (!isFlow && effectiveFirstMessage !== config.firstMessage) ||
     settingsDirty ||
@@ -230,7 +238,7 @@ export function AgentBuilder({
         <Badge variant="outline">{status}</Badge>
         {dirty && <span className="text-sm text-warn">Unsaved changes</span>}
         <div className="ml-auto flex items-center gap-2">
-          <Link className="text-sm text-muted-foreground hover:text-foreground" href={`/agents/${agentId}/learning`}>
+          <Link className={buttonVariants({ variant: 'outline', size: 'sm' })} href={`/agents/${agentId}/learning`}>
             Learning
           </Link>
           {agentType === 'single' && (
@@ -270,7 +278,7 @@ export function AgentBuilder({
             <span className="font-medium text-foreground">${(rate.includedCentsPerMin / 100).toFixed(2)}/min</span>{' '}
             included · ${(rate.overageCentsPerMin / 100).toFixed(2)}/min overage ({rate.planName})
           </span>
-          {!isCustom && <Badge variant="secondary">{modelLabel(llm)}</Badge>}
+          {!isCustom && <Badge variant="secondary">{modelChoiceLabel(llm, modelLabel)}</Badge>}
           <Badge variant="secondary">{LANGUAGES.find((l) => l.code === language)?.name ?? language}</Badge>
         </div>
       )}
@@ -311,14 +319,12 @@ export function AgentBuilder({
                   <Label htmlFor="flow-llm" className="mb-1 block">
                     Model
                   </Label>
-                  <Select id="flow-llm" value={llm} onChange={(e) => setLlm(e.target.value)}>
-                    {MODEL_INFO.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.label}
-                      </option>
-                    ))}
-                  </Select>
-                  <p className="mt-1 text-xs text-muted-foreground">{MODEL_INFO.find((m) => m.id === llm)?.hint}</p>
+                  <ModelPicker id="flow-llm" value={llm} onChange={setLlm} openRouterModels={openRouterModels} />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {isOpenRouterChoice(llm)
+                      ? 'Runs through OpenRouter on its account. Labelled models may be slow or unsupported on calls.'
+                      : MODEL_INFO.find((m) => m.id === llm)?.hint}
+                  </p>
                 </div>
               </div>
             }
@@ -335,6 +341,7 @@ export function AgentBuilder({
               setLanguage={setLanguage}
               llm={llm}
               setLlm={setLlm}
+              openRouterModels={openRouterModels}
               prompt={prompt}
               setPrompt={setPrompt}
               showModel={!isCustom}
@@ -409,6 +416,7 @@ function ConfigRow({
   setLanguage,
   llm,
   setLlm,
+  openRouterModels,
   prompt,
   setPrompt,
   showModel,
@@ -421,6 +429,7 @@ function ConfigRow({
   setLanguage: (v: string) => void
   llm: string
   setLlm: (v: string) => void
+  openRouterModels: OpenRouterModel[]
   prompt: string
   setPrompt: (v: string) => void
   showModel: boolean
@@ -445,14 +454,12 @@ function ConfigRow({
       {showModel && (
         <div>
           <Label htmlFor="llm">LLM model</Label>
-          <Select id="llm" value={llm} onChange={(e) => setLlm(e.target.value)}>
-            {MODEL_INFO.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.label}
-              </option>
-            ))}
-          </Select>
-          <p className="mt-1 text-xs text-muted-foreground">{MODEL_INFO.find((m) => m.id === llm)?.hint}</p>
+          <ModelPicker id="llm" value={llm} onChange={setLlm} openRouterModels={openRouterModels} />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {isOpenRouterChoice(llm)
+                      ? 'Runs through OpenRouter on its account. Labelled models may be slow or unsupported on calls.'
+                      : MODEL_INFO.find((m) => m.id === llm)?.hint}
+                  </p>
         </div>
       )}
       {showHandbook && (

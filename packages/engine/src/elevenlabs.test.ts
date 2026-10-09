@@ -476,3 +476,62 @@ describe('startOutboundCall', () => {
     }
   })
 })
+
+// 2026-10-09: humanized turn-taking + one shared OpenRouter secret.
+describe('turn-taking and shared secrets', () => {
+  function capture(responder: (url: string, method: string) => unknown = () => ({})) {
+    const calls: { url: string; method: string; body: any }[] = []
+    const orig = globalThis.fetch
+    globalThis.fetch = (async (url: string, init: any) => {
+      const method = init?.method ?? 'GET'
+      calls.push({ url: String(url), method, body: init?.body ? JSON.parse(init.body) : undefined })
+      return { ok: true, status: 200, json: async () => responder(String(url), method), text: async () => '' }
+    }) as unknown as typeof fetch
+    return { calls, restore: () => { globalThis.fetch = orig } }
+  }
+
+  it('patient turn-taking waits for the caller, and backchannels do not cut the agent off', async () => {
+    const s = capture()
+    try {
+      await engine.updateAgent('agent_1', { call: { endOnSilenceSecs: 30, patience: 'patient', fillers: true } })
+    } finally {
+      s.restore()
+    }
+    const turn = s.calls[0]!.body.conversation_config.turn
+    expect(turn.turn_eagerness).toBe('patient')
+    expect(turn.silence_end_call_timeout).toBe(30) // merged into the SAME turn object, not overwritten
+    expect(turn.interruption_ignore_terms).toEqual(expect.arrayContaining(['uh-huh', 'mm-hmm']))
+    expect(turn.merge_with_default_ignore_terms).toBe(true)
+    expect(turn.soft_timeout_config).toMatchObject({ timeout_seconds: 1.5, randomize_fillers: true, disable_until_first_user_message: true })
+  })
+
+  it('turning fillers off disables the soft timeout; omitting them leaves the provider untouched', async () => {
+    const s = capture()
+    try {
+      await engine.updateAgent('agent_1', { call: { fillers: false } })
+      await engine.updateAgent('agent_1', { call: { maxDurationSecs: 300 } })
+    } finally {
+      s.restore()
+    }
+    expect(s.calls[0]!.body.conversation_config.turn.soft_timeout_config).toEqual({ timeout_seconds: -1 })
+    expect(s.calls[1]!.body.conversation_config.turn).toBeUndefined()
+  })
+
+  it('reuses a secret by name, and creates it only when missing', async () => {
+    const existing = capture(() => ({ secrets: [{ name: 'openrouter_api_key', secret_id: 'sec_1' }] }))
+    try {
+      expect(await engine.ensureSecret('openrouter_api_key', 'k')).toEqual({ secretId: 'sec_1' })
+    } finally {
+      existing.restore()
+    }
+    expect(existing.calls.map((c) => c.method)).toEqual(['GET'])
+
+    const missing = capture((_url, method) => (method === 'GET' ? { secrets: [] } : { secret_id: 'sec_new' }))
+    try {
+      expect(await engine.ensureSecret('openrouter_api_key', 'k')).toEqual({ secretId: 'sec_new' })
+    } finally {
+      missing.restore()
+    }
+    expect(missing.calls[1]).toMatchObject({ method: 'POST', body: { type: 'new', name: 'openrouter_api_key', value: 'k' } })
+  })
+})
