@@ -1,7 +1,7 @@
 'use server'
 
 import type { Db } from '@voiceflow/db'
-import type { KnowledgeSource } from '@voiceflow/engine'
+import { KnowledgeIndexError, type KnowledgeSource } from '@voiceflow/engine'
 import { revalidatePath } from 'next/cache'
 import { makeEngine } from '../../lib/engine'
 import { activeOrg, type ActiveOrg } from '../../lib/org'
@@ -128,6 +128,7 @@ export async function setKbAttachmentAction(
     }
   } catch (e) {
     console.error('KB attachment change failed:', e)
+    if (e instanceof KnowledgeIndexError) return { error: e.message }
     return { error: 'Could not update attachment — try again.' }
   }
   revalidatePath('/knowledge')

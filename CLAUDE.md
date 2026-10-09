@@ -1930,3 +1930,19 @@ ever sees — rendered a broken image.
 - Rate limit: prod has no UPSTASH_*, so rateLimit() failed open; the 'auth' window now falls
   back to per-process memory (8 / 15 min per IP and per email) — webhooks/API unchanged.
 - No password reset / self-service change exists (no email in prod). Remove = membership only.
+
+### Knowledge base retrieval (RAG) + two-way flow edges (2026-10-09)
+- Any agent with knowledge now runs RAG. Without it EL stuffs every doc into the prompt
+  (~300k-char ceiling), so a real product KB (the SDS Manager demo: 43 docs, 9 MB) is
+  unusable. Settings: e5_mistral_7b_instruct, 8 chunks, 15k chars/turn (voice latency).
+- EL refuses (422 rag_index_not_ready) to attach a doc to a retrieval agent before the
+  doc's index exists. POST /v1/convai/knowledge-base/{id}/rag-index is idempotent (start,
+  then status). createKnowledgeDoc starts it; attachKnowledge and flow saves with
+  step-level kb wait for succeeded|document_too_small (≤90 s) and raise
+  KnowledgeIndexError (user-facing text) on rag_limit_exceeded / failed / timeout.
+  RAG storage is per EL plan (Creator 20 MB of ORIGINAL file size).
+- PATCH deep-merges prompt (verified live): a builder Save sends prompt.prompt/llm only
+  and leaves knowledge_base + rag intact.
+- Flow edges (PR #42): EL allows ONE edge per node pair ("Duplicate edge found between A
+  and B"); B→A rides the A→B edge as backward_condition and is listed in both nodes'
+  edge_order. validateWorkflow rejects a second same-direction connection.

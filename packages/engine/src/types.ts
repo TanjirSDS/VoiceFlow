@@ -319,3 +319,9 @@ export interface VoiceEngine {
    */
   fetchRecording(providerCallId: string): Promise<{ audio: ArrayBuffer; contentType: string }>
 }
+
+/** A KB document can't be used yet (still indexing, plan storage full, or unindexable).
+ *  The message is written for the end user, so callers may show it as-is. */
+export class KnowledgeIndexError extends Error {
+  override name = 'KnowledgeIndexError'
+}

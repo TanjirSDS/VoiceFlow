@@ -14,7 +14,13 @@ import type {
   VoiceEngine,
   WebhookRequest,
 } from './types'
+import { KnowledgeIndexError } from './types'
 import { workflowFromProvider, workflowToProvider } from './workflow-map'
+
+/** KB docs attached to individual flow steps (EL additional_knowledge_base). */
+const nodeKbIds = (cfg: Partial<AgentConfig>) => [
+  ...new Set((cfg.workflow?.nodes ?? []).flatMap((n) => (n.kb ?? []).map((k) => k.knowledgeId))),
+]
 
 /**
  * ElevenLabs turns → neutral TranscriptTurn (Phase 26). EL already names these
@@ -51,7 +57,17 @@ const BASE = 'https://api.elevenlabs.io'
 export interface ElevenLabsEngineOpts {
   apiKey: string
   webhookSecret: string
+  /** Delay between RAG-index status polls (tests pass 0). */
+  ragPollMs?: number
 }
+
+// Retrieval (RAG) for every agent that carries knowledge. Without it EL stuffs each doc
+// into the prompt, which only works up to ~300k chars total; past that the agent cannot
+// use its KB at all. Retrieval adds ~250 ms per turn. Chunk/length caps keep per-turn
+// context small for voice. https://elevenlabs.io/docs/eleven-agents/customization/knowledge-base/rag
+const RAG_MODEL = 'e5_mistral_7b_instruct'
+const RAG = { enabled: true, max_retrieved_rag_chunks_count: 8, max_documents_length: 15000 }
+const RAG_WAIT_MS = 90_000
 
 export class ElevenLabsEngine implements VoiceEngine {
   constructor(private opts: ElevenLabsEngineOpts) {}
@@ -91,6 +107,7 @@ export class ElevenLabsEngine implements VoiceEngine {
     // {url, model_id?, api_key:{secret_id}} — the key is a workspace-secret ref,
     // never a plain string. https://elevenlabs.io/docs/eleven-agents/customization/llm/custom-llm
     const custom = cfg.customLlm
+    const nodeKb = nodeKbIds(cfg)
     const conversation_config: Record<string, unknown> = {
       agent: {
         // empty string ⇒ user speaks first (agent waits); verified against
@@ -99,6 +116,7 @@ export class ElevenLabsEngine implements VoiceEngine {
         language: cfg.language ?? 'en',
         prompt: {
           ...(cfg.systemPrompt !== undefined && { prompt: cfg.systemPrompt }),
+          ...(nodeKb.length && { rag: RAG }),
           ...(custom
             ? {
                 llm: 'custom-llm',
@@ -168,11 +186,13 @@ export class ElevenLabsEngine implements VoiceEngine {
   }
 
   async createAgent(cfg: AgentConfig) {
+    await this.ensureRagIndexes(nodeKbIds(cfg))
     const res = await this.req('POST', '/v1/convai/agents/create', this.toProviderConfig(cfg))
     return { providerAgentId: res.agent_id as string }
   }
 
   async updateAgent(providerAgentId: string, cfg: Partial<AgentConfig>) {
+    await this.ensureRagIndexes(nodeKbIds(cfg))
     await this.req('PATCH', `/v1/convai/agents/${providerAgentId}`, this.toProviderConfig(cfg))
   }
 
@@ -333,6 +353,9 @@ export class ElevenLabsEngine implements VoiceEngine {
     } else {
       throw new Error('createKnowledgeDoc needs url, text, or file')
     }
+    // Start the RAG index now so it is usually ready by the time someone attaches the doc.
+    // Best effort: attachKnowledge waits for (and reports) the real status.
+    await this.req('POST', `/v1/convai/knowledge-base/${doc.id}/rag-index`, { model: RAG_MODEL }).catch(() => {})
     return { knowledgeId: doc.id as string }
   }
 
@@ -345,10 +368,14 @@ export class ElevenLabsEngine implements VoiceEngine {
   ) {
     const existing = await this.knowledgeBaseOf(providerAgentId)
     if (existing.some((e) => e.id === doc.knowledgeId)) return
-    await this.patchKnowledgeBase(providerAgentId, [
-      ...existing,
-      { type: doc.type, id: doc.knowledgeId, name: doc.name },
-    ])
+    // EL refuses (422 rag_index_not_ready) to attach a doc to a retrieval agent before its
+    // index exists — verified live 2026-10-09 — so build/await it first.
+    await this.ensureRagIndex(doc.knowledgeId)
+    await this.patchKnowledgeBase(
+      providerAgentId,
+      [...existing, { type: doc.type, id: doc.knowledgeId, name: doc.name }],
+      RAG
+    )
   }
 
   async detachKnowledge(providerAgentId: string, knowledgeId: string) {
@@ -364,10 +391,39 @@ export class ElevenLabsEngine implements VoiceEngine {
     return agent.conversation_config?.agent?.prompt?.knowledge_base ?? []
   }
 
-  private async patchKnowledgeBase(providerAgentId: string, knowledge_base: any[]) {
+  // rag is sent only on attach: detaching the last doc leaves retrieval on, which is harmless.
+  private async patchKnowledgeBase(providerAgentId: string, knowledge_base: any[], rag?: typeof RAG) {
     await this.req('PATCH', `/v1/convai/agents/${providerAgentId}`, {
-      conversation_config: { agent: { prompt: { knowledge_base } } },
+      conversation_config: { agent: { prompt: { knowledge_base, ...(rag && { rag }) } } },
     })
+  }
+
+  /**
+   * POST .../rag-index is idempotent: the first call starts the index, later calls report
+   * its status (new|created|processing|succeeded|failed|rag_limit_exceeded|
+   * document_too_small|cannot_index_folder — RAGIndexStatus, verified 2026-10-09).
+   * Docs under 500 bytes are never indexed; EL puts them in the prompt instead.
+   */
+  private async ensureRagIndex(knowledgeId: string) {
+    const deadline = Date.now() + RAG_WAIT_MS
+    for (;;) {
+      const r = await this.req('POST', `/v1/convai/knowledge-base/${knowledgeId}/rag-index`, { model: RAG_MODEL })
+      if (r?.status === 'succeeded' || r?.status === 'document_too_small') return
+      if (r?.status === 'rag_limit_exceeded') {
+        throw new KnowledgeIndexError('The knowledge base storage limit for this plan is reached. Remove a document and try again.')
+      }
+      if (r?.status === 'failed' || r?.status === 'cannot_index_folder') {
+        throw new KnowledgeIndexError('This document could not be indexed. Try re-uploading it in another format.')
+      }
+      if (Date.now() >= deadline) {
+        throw new KnowledgeIndexError('This document is still being indexed. Try again in a minute.')
+      }
+      await new Promise((done) => setTimeout(done, this.opts.ragPollMs ?? 3000))
+    }
+  }
+
+  private async ensureRagIndexes(ids: string[]) {
+    for (const id of ids) await this.ensureRagIndex(id)
   }
 
   async listKnowledge(providerAgentId: string): Promise<KnowledgeSource[]> {

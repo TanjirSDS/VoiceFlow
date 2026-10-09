@@ -1,6 +1,7 @@
 import { createHmac } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import { ElevenLabsEngine } from './elevenlabs'
+import { KnowledgeIndexError } from './types'
 import fixture from '../fixtures/post-call-transcription.json'
 
 const engine = new ElevenLabsEngine({
@@ -128,7 +129,9 @@ describe('knowledge base + SIP (Phase 13)', () => {
       const body = typeof init?.body === 'string' ? JSON.parse(init.body) : init?.body
       calls.push({ method, url: String(url), body })
       const json = async () =>
-        method === 'GET' && String(url).includes('/agents/')
+        String(url).includes('/rag-index')
+          ? { status: 'succeeded' }
+          : method === 'GET' && String(url).includes('/agents/')
           ? { conversation_config: { agent: { prompt: { knowledge_base: agentKb } } } }
           : { id: 'kb_new', phone_number_id: 'pn_new' }
       return { ok: true, status: 200, json, text: async () => '' }
@@ -145,11 +148,12 @@ describe('knowledge base + SIP (Phase 13)', () => {
     } finally {
       s.restore()
     }
-    expect(s.calls[0]).toMatchObject({
+    const creates = s.calls.filter((c) => !c.url.includes('/rag-index')) // each create also starts an index
+    expect(creates[0]).toMatchObject({
       url: expect.stringContaining('/knowledge-base/url'),
       body: { url: 'https://x.com', name: 'Docs' },
     })
-    expect(s.calls[1]).toMatchObject({
+    expect(creates[1]).toMatchObject({
       url: expect.stringContaining('/knowledge-base/text'),
       body: { text: 'hello', name: 'FAQ' },
     })
@@ -315,5 +319,106 @@ describe('simulateConversation (Phase 16)', () => {
     }
     expect(captured.extra_evaluation_criteria).toBeUndefined()
     expect(result).toEqual({ passed: null, transcript: [] })
+  })
+})
+
+// RAG (2026-10-09): a big KB only works through retrieval, and EL refuses to attach a doc
+// to a retrieval agent before its index exists (422 rag_index_not_ready, seen live).
+describe('knowledge base retrieval (RAG)', () => {
+  const rag = new ElevenLabsEngine({ apiKey: 'k', webhookSecret: 's', ragPollMs: 0 })
+  function stub(statuses: string[]) {
+    const calls: { method: string; url: string; body: any }[] = []
+    const orig = globalThis.fetch
+    globalThis.fetch = (async (url: string, init: any) => {
+      const method = init?.method ?? 'GET'
+      const body = typeof init?.body === 'string' ? JSON.parse(init.body) : init?.body
+      calls.push({ method, url: String(url), body })
+      const json = async () =>
+        String(url).includes('/rag-index')
+          ? { status: statuses.length > 1 ? statuses.shift() : statuses[0] }
+          : String(url).includes('/agents/') && method === 'GET'
+            ? { conversation_config: { agent: { prompt: { knowledge_base: [] } } } }
+            : { id: 'kb_1', agent_id: 'agent_1' }
+      return { ok: true, status: 200, json, text: async () => '' }
+    }) as unknown as typeof fetch
+    return { calls, restore: () => { globalThis.fetch = orig } }
+  }
+  const doc = { knowledgeId: 'kb_1', name: 'Manual', type: 'file' as const }
+
+  it('indexes the doc BEFORE attaching, and turns retrieval on in the same PATCH', async () => {
+    const s = stub(['succeeded'])
+    try {
+      await rag.attachKnowledge('agent_1', doc)
+    } finally {
+      s.restore()
+    }
+    const idx = s.calls.findIndex((c) => c.url.endsWith('/knowledge-base/kb_1/rag-index'))
+    const patch = s.calls.findIndex((c) => c.method === 'PATCH')
+    expect(idx).toBeGreaterThan(-1)
+    expect(s.calls[idx]!.body).toEqual({ model: 'e5_mistral_7b_instruct' })
+    expect(patch).toBeGreaterThan(idx)
+    expect(s.calls[patch]!.body.conversation_config.agent.prompt.rag).toMatchObject({ enabled: true })
+  })
+
+  it('waits while the index is processing', async () => {
+    const s = stub(['new', 'processing', 'succeeded'])
+    try {
+      await rag.attachKnowledge('agent_1', doc)
+    } finally {
+      s.restore()
+    }
+    expect(s.calls.filter((c) => c.url.includes('/rag-index'))).toHaveLength(3)
+    expect(s.calls.some((c) => c.method === 'PATCH')).toBe(true)
+  })
+
+  it('treats a doc too small to index as usable (EL puts it in the prompt)', async () => {
+    const s = stub(['document_too_small'])
+    try {
+      await rag.attachKnowledge('agent_1', doc)
+    } finally {
+      s.restore()
+    }
+    expect(s.calls.some((c) => c.method === 'PATCH')).toBe(true)
+  })
+
+  it('refuses with a user-facing error, and never PATCHes, when the plan storage is full', async () => {
+    const s = stub(['rag_limit_exceeded'])
+    try {
+      await expect(rag.attachKnowledge('agent_1', doc)).rejects.toBeInstanceOf(KnowledgeIndexError)
+    } finally {
+      s.restore()
+    }
+    expect(s.calls.some((c) => c.method === 'PATCH')).toBe(false)
+  })
+
+  it('starts indexing as soon as a doc is created', async () => {
+    const s = stub(['new'])
+    try {
+      await rag.createKnowledgeDoc({ name: 'FAQ', text: 'hello' })
+    } finally {
+      s.restore()
+    }
+    expect(s.calls.map((c) => c.url)).toEqual([
+      expect.stringContaining('/knowledge-base/text'),
+      expect.stringContaining('/knowledge-base/kb_1/rag-index'),
+    ])
+  })
+
+  it('a flow step with its own knowledge gets indexed docs and retrieval on', async () => {
+    const s = stub(['succeeded'])
+    try {
+      await rag.updateAgent('agent_1', {
+        workflow: {
+          startNodeId: 'a',
+          nodes: [{ id: 'a', type: 'conversation', label: 'A', kb: [doc] }, { id: 'end', type: 'end' }],
+          edges: [{ from: 'a', to: 'end' }],
+        },
+      })
+    } finally {
+      s.restore()
+    }
+    expect(s.calls[0]!.url).toContain('/knowledge-base/kb_1/rag-index')
+    const patch = s.calls.find((c) => c.method === 'PATCH')!
+    expect(patch.body.conversation_config.agent.prompt.rag).toMatchObject({ enabled: true })
   })
 })
