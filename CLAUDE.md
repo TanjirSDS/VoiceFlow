@@ -2062,3 +2062,18 @@ ever sees — rendered a broken image.
 - Bench-copy conversations land in prod `calls` as orphan rows (agent_id/org_id NULL: the
   workspace post-call webhook fires for every agent) — invisible to members, ignored by learning.
 
+
+### Spoken read-backs + ChatGPT-voice benchmark (2026-10-14)
+- phoneStyle gained three lines, each from simulated calls on the SDS demo agent
+  (~/vf-sds-demo/sim-call.mjs + judge.mjs, 12 calls per variant): phone numbers in small
+  groups (read-backs went "five five five two zero one…"; with the example, grouped on 5/5),
+  emails as words, and no two questions joined with "and". A full rewrite of the block scored
+  WORSE (judge 59.6 vs 63.1, longer replies) and was dropped. "Great," as a replaced opener
+  did NOT hold on gpt-4.1-mini (still 4/12 calls).
+- MODEL stays gpt-4.1-mini. Heard latency, 3 runs each: gpt-4.1-mini 1.41-1.51 s,
+  gemini-3.5-flash-lite 1.24-1.46 s (noise). Faster on one run: qwen3-30b-a3b 1.14 s,
+  deepseek-v41-flash 1.19 s — but deepseek SPOKE raw markup ("</｜DSML｜ parameter>",
+  "<static-knowledge-base>") as its opening line, and qwen + gemini-3.5-flash-lite broke the
+  SDS pricing guardrail (2/12 each) and sprinkle audio tags ([happy], [smile]). gpt-4.1-mini
+  emits no tags. ChatGPT voice runs on OpenAI's full-duplex speech model, not a cascade; EL's
+  floor here is ~1.4 s (turn wait ~0.3 + RAG 0.15 + LLM ~0.6 + TTS 0.08).

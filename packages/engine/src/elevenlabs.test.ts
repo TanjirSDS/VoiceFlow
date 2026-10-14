@@ -593,6 +593,9 @@ describe('human phone speech', () => {
     expect(prompt.prompt.startsWith('You are Acme.\n\n## How you speak (live phone call)')).toBe(true)
     expect(prompt.temperature).toBeGreaterThan(0)
     expect(Object.keys(prompt.built_in_tools)).toEqual(['end_call', 'skip_turn'])
+    // spoken read-backs: phone numbers in groups, emails as words (simulated calls read digit by digit)
+    expect(prompt.prompt).toContain('phone numbers in small groups')
+    expect(prompt.prompt).toContain('never two questions joined with "and"')
     // a save that doesn't carry the prompt leaves all three alone (PATCH deep-merges)
     const other = (await patchBody({ call: { maxDurationSecs: 300 } })).conversation_config.agent.prompt
     expect(['prompt', 'temperature', 'built_in_tools'].some((k) => k in other)).toBe(false)
