@@ -48,7 +48,7 @@ export type {
   WorkflowNodeType,
 } from '../types'
 export { DEFAULT_LLM, MODEL_INFO, modelLabel, type ModelInfo } from './model-info'
-export { CALL_DEFAULTS, DEFAULT_ANALYSIS, SPEECH_DEFAULTS } from './settings-defaults'
+export { CALL_DEFAULTS, DEFAULT_ANALYSIS, DEFAULT_VOICE_ID, SPEECH_DEFAULTS } from './settings-defaults'
 export {
   HANDBOOK_HEADING,
   HANDBOOK_PRESETS,

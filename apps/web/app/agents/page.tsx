@@ -1,5 +1,5 @@
 import { getEnv } from '@voiceflow/db'
-import { normalizeStoredConfigSafe } from '@voiceflow/engine/templates'
+import { DEFAULT_VOICE_ID, normalizeStoredConfigSafe } from '@voiceflow/engine/templates'
 import { AgentsTable, type AgentRow } from '../../components/agents-table'
 import { makeEngine } from '../../lib/engine'
 import { activeOrg } from '../../lib/org'
@@ -68,7 +68,7 @@ export default async function AgentsPage() {
       <AgentsTable
         agents={rows}
         voices={voices.map((v) => ({ voiceId: v.voiceId, name: v.name }))}
-        defaultVoiceId={voices[0]?.voiceId ?? ''}
+        defaultVoiceId={(voices.find((v) => v.voiceId === DEFAULT_VOICE_ID) ?? voices[0])?.voiceId ?? ''}
         openaiEnabled={!!getEnv().OPENAI_API_KEY}
         atLimit={atLimit}
         planName={org?.plan.name ?? ''}

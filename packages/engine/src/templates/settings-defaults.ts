@@ -8,6 +8,11 @@ import type { AgentConfig } from '../types'
  *  Speech Settings sliders + their "reset to default" button. */
 export const SPEECH_DEFAULTS = { stability: 0.5, similarityBoost: 0.8, speed: 1 } as const
 
+/** Default voice for new agents (2026-10-14, chosen by ear): ElevenLabs library voice
+ *  "Jerry B. - Hyper-Real Conversational", male, American, trained on real conversation.
+ *  Used only when it is in the workspace's voice list; otherwise the first voice. */
+export const DEFAULT_VOICE_ID = '1t1EeRixsJrKbiF1zwM6'
+
 /** ElevenLabs call defaults (verified 2026-07-13): 10 min cap, silence-hangup off. */
 // Humanized turn-taking by default (2026-10-09): wait for callers to finish their thought,
 // and fill a slow answer with a short phrase instead of silence.

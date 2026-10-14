@@ -2038,7 +2038,12 @@ ever sees — rendered a broken image.
   price question itself ("Around $1,500." — real price $2,064) before the real answer. Static
   fillers stay as the 1.5 s safety net. Rules that DIDN'T hold: a word cap ("under 20 words") —
   replies stayed 28-39; "answer in ONE short sentence, then at most one short question" holds the
-  shape. gpt-4.1-mini still opens ~1 in 10 replies with "Good question." despite the ban.
+  shape. Bans don't hold either: "never open with 'Good question'" still produced it in 2/3
+  calls; a REPLACEMENT ("where you'd say 'Good question'/'Absolutely', say 'Oh, sure.' or
+  'Yeah.' instead") gave 0/4.
+- VOICE: Soham picked "Jerry B. - Hyper-Real Conversational" (1t1EeRixsJrKbiF1zwM6, library
+  voice, 730-day removal notice) by ear from 6 male American candidates → DEFAULT_VOICE_ID for
+  new agents. In-call TTS first byte 0.08 s on v4 Turbo, 0.13-0.15 s on v3 Conversational.
 - v4 Turbo PERFORMS audio tags (STT of "[laughs]" output = a laugh event, "[happy]" not spoken),
   so EL's expressive_mode prompt is safe on it.
 - LEARNING proposes filler words: suggestion type filler_phrases {phrases} (0025 widens the type
