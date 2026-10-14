@@ -2054,6 +2054,11 @@ ever sees — rendered a broken image.
 - DEFECT CAUGHT before shipping: updateAgentAction REPLACED agentConfig.call with the builder's
   call settings, which don't carry fillerPhrases — every Save would have wiped them. Now merged
   (save-call-merge.test.ts, mutation-checked).
+- FILLER STACKING (found on the live read-back after deploy): EL raises
+  max_soft_timeouts_per_generation to the number of phrases sent (max 1 + 3 phrases → stored
+  max 3; max 1 + 1 phrase → 1). With learned phrases (≤8) + 3 neutral ones a stalled model
+  could say up to 11 fillers. Now exactly two, in order, not shuffled: the newest learned phrase
+  (or "Mm-hmm.") at 1.5 s, "Right, one sec." at 3 s only if still waiting.
 - Bench-copy conversations land in prod `calls` as orphan rows (agent_id/org_id NULL: the
   workspace post-call webhook fires for every agent) — invisible to members, ignored by learning.
 

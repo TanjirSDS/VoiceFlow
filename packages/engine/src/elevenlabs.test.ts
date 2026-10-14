@@ -502,7 +502,13 @@ describe('turn-taking and shared secrets', () => {
     expect(turn.silence_end_call_timeout).toBe(30) // merged into the SAME turn object, not overwritten
     expect(turn.interruption_ignore_terms).toEqual(expect.arrayContaining(['uh-huh', 'mm-hmm']))
     expect(turn.merge_with_default_ignore_terms).toBe(true)
-    expect(turn.soft_timeout_config).toMatchObject({ timeout_seconds: 1.5, randomize_fillers: true, disable_until_first_user_message: true })
+    expect(turn.soft_timeout_config).toMatchObject({
+      timeout_seconds: 1.5,
+      message: 'Mm-hmm.',
+      additional_soft_timeout_messages: ['Right, one sec.'],
+      randomize_fillers: false, // ack first, "one sec" only if it is still thinking
+      disable_until_first_user_message: true,
+    })
   })
 
   it('turning fillers off disables the soft timeout; omitting them leaves the provider untouched', async () => {
@@ -592,11 +598,13 @@ describe('human phone speech', () => {
     expect(['prompt', 'temperature', 'built_in_tools'].some((k) => k in other)).toBe(false)
   })
 
-  it('learned filler phrases become the reply openers and lead the slow-answer fillers', async () => {
+  it('learned filler phrases become the reply openers; the newest is the slow-answer filler', async () => {
     const body = await patchBody({ systemPrompt: 'x', call: { fillers: true, fillerPhrases: ['Oh, gotcha.', 'Okay.'] } })
     expect(body.conversation_config.agent.prompt.prompt).toContain('("Oh, gotcha.", "Okay.")')
     const soft = body.conversation_config.turn.soft_timeout_config
-    expect([soft.message, ...soft.additional_soft_timeout_messages]).toEqual(['Oh, gotcha.', 'Okay.', 'Mm-hmm.', 'Right, one sec.'])
+    // EL raises the max to the number of phrases, so never more than two (no stacked fillers)
+    expect([soft.message, ...soft.additional_soft_timeout_messages]).toEqual(['Oh, gotcha.', 'Right, one sec.'])
+    expect(soft.max_soft_timeouts_per_generation).toBe(2)
     expect(soft.use_llm_generated_message).toBeUndefined() // the filler model made up a price in testing
   })
 
