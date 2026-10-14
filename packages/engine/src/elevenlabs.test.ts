@@ -564,3 +564,55 @@ describe('switching models', () => {
     expect('llm' in none || 'custom_llm' in none).toBe(false)
   })
 })
+
+// 2026-10-14: every agent speaks like a person on a live call.
+describe('human phone speech', () => {
+  async function patchBody(cfg: Parameters<typeof engine.updateAgent>[1]) {
+    let body: any
+    const orig = globalThis.fetch
+    globalThis.fetch = (async (_url: string, init: any) => {
+      body = JSON.parse(init.body)
+      return { ok: true, status: 200, json: async () => ({}), text: async () => '' }
+    }) as unknown as typeof fetch
+    try {
+      await engine.updateAgent('agent_1', cfg)
+    } finally {
+      globalThis.fetch = orig
+    }
+    return body
+  }
+
+  it('adds the speaking style, sampling and the end-call/skip-turn tools whenever the prompt is sent', async () => {
+    const prompt = (await patchBody({ systemPrompt: 'You are Acme.\n' })).conversation_config.agent.prompt
+    expect(prompt.prompt.startsWith('You are Acme.\n\n## How you speak (live phone call)')).toBe(true)
+    expect(prompt.temperature).toBeGreaterThan(0)
+    expect(Object.keys(prompt.built_in_tools)).toEqual(['end_call', 'skip_turn'])
+    // a save that doesn't carry the prompt leaves all three alone (PATCH deep-merges)
+    const other = (await patchBody({ call: { maxDurationSecs: 300 } })).conversation_config.agent.prompt
+    expect(['prompt', 'temperature', 'built_in_tools'].some((k) => k in other)).toBe(false)
+  })
+
+  it('learned filler phrases become the reply openers and lead the slow-answer fillers', async () => {
+    const body = await patchBody({ systemPrompt: 'x', call: { fillers: true, fillerPhrases: ['Oh, gotcha.', 'Okay.'] } })
+    expect(body.conversation_config.agent.prompt.prompt).toContain('("Oh, gotcha.", "Okay.")')
+    const soft = body.conversation_config.turn.soft_timeout_config
+    expect([soft.message, ...soft.additional_soft_timeout_messages]).toEqual(['Oh, gotcha.', 'Okay.', 'Mm-hmm.', 'Right, one sec.'])
+    expect(soft.use_llm_generated_message).toBeUndefined() // the filler model made up a price in testing
+  })
+
+  it('getAgent returns the owner\'s prompt without the added style', async () => {
+    const sent = (await patchBody({ systemPrompt: 'You are Acme.' })).conversation_config.agent.prompt.prompt
+    const orig = globalThis.fetch
+    globalThis.fetch = (async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ name: 'a', conversation_config: { agent: { prompt: { prompt: sent } } } }),
+      text: async () => '',
+    })) as unknown as typeof fetch
+    try {
+      expect((await engine.getAgent('agent_1')).systemPrompt).toBe('You are Acme.')
+    } finally {
+      globalThis.fetch = orig
+    }
+  })
+})

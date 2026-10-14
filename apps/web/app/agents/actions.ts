@@ -9,6 +9,7 @@ import {
   DEFAULT_ANALYSIS,
   E164,
   ensureDisclosureAndConduct,
+  mergeFillerPhrases,
   normalizeStoredConfig,
   outboundStartNodeId,
   validateWorkflow,
@@ -206,7 +207,8 @@ export async function updateAgentAction(
       ...(input.language ? { language: input.language } : {}),
       ...(input.speech && { speech: input.speech }),
       ...(input.transcription && { transcription: input.transcription }),
-      ...(input.call && { call: input.call }),
+      // merge: the builder doesn't carry call.fillerPhrases (learned), so replacing would drop them
+      ...(input.call && { call: { ...stored.agentConfig.call, ...input.call } }),
       ...(input.analysis && { analysis: input.analysis }),
       ...(input.widget && { widget: input.widget }),
       ...(input.workflow && { workflow: input.workflow }),
@@ -422,9 +424,18 @@ export async function applySuggestionsAction(agentId: string, formData: FormData
   if (error) throw new Error(error.message)
 
   let prompt = stored.agentConfig.systemPrompt
+  let fillerPhrases = stored.agentConfig.call?.fillerPhrases ?? []
   const applied: string[] = []
   for (const row of rows ?? []) {
     const payload: SuggestionPayload = { ...(row.suggestion as SuggestionPayload) }
+    if (row.type === 'filler_phrases') {
+      const merged = mergeFillerPhrases(fillerPhrases, payload.phrases)
+      if (merged) {
+        fillerPhrases = merged
+        applied.push(row.id)
+      }
+      continue
+    }
     if (answerOverride) payload.a = answerOverride
     const merged = applySuggestionToPrompt(prompt, row.type as SuggestionType, payload)
     if (merged) {
@@ -436,7 +447,11 @@ export async function applySuggestionsAction(agentId: string, formData: FormData
     throw new Error('Nothing could be applied — knowledge gaps need information only you can add')
   }
 
-  const agentConfig: AgentConfig = { ...stored.agentConfig, systemPrompt: prompt }
+  const agentConfig: AgentConfig = {
+    ...stored.agentConfig,
+    systemPrompt: prompt,
+    ...(fillerPhrases.length && { call: { ...stored.agentConfig.call, fillerPhrases } }),
+  }
   await makeEngine(agent.provider).updateAgent(agent.provider_agent_id, agentConfig)
   const newStored: StoredAgentConfig = { ...stored, agentConfig }
   const { error: updErr } = await db

@@ -105,6 +105,24 @@ describe('parseSuggestions', () => {
     expect(out[0].suggestion.frequency).toBe(3)
   })
 
+  it('keeps only usable filler phrases, and drops a filler suggestion with none', () => {
+    const out = parseSuggestions(
+      JSON.stringify({
+        suggestions: [
+          {
+            type: 'filler_phrases',
+            suggestion: { phrases: ['Oh, gotcha.', 'It costs two thousand sixty-four dollars a year.'] },
+            evidence: [{ callId: 'c1', quote: 'yeah gotcha' }],
+          },
+          { type: 'filler_phrases', suggestion: { phrases: [] }, evidence: [{ callId: 'c2', quote: 'x' }] },
+        ],
+      }),
+      valid
+    )
+    expect(out).toHaveLength(1)
+    expect(out[0].suggestion.phrases).toEqual(['Oh, gotcha.'])
+  })
+
   it('drops unknown types, empty evidence, and hallucinated call ids', () => {
     const out = parseSuggestions(
       JSON.stringify({

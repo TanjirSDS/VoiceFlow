@@ -30,7 +30,7 @@ export function agentInstructions(cfg: AgentConfig): string {
 
 /** Identity of a suggestion, so a re-run never re-proposes what is pending or already applied. */
 export function suggestionKey(type: SuggestionType, s: SuggestionPayload): string {
-  const text = s.q ?? s.instruction ?? s.topic ?? ''
+  const text = s.q ?? s.instruction ?? s.topic ?? s.phrases?.join(' ') ?? ''
   return `${type}:${text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()}`
 }
 
@@ -92,7 +92,7 @@ export async function learnForAgent(
   }
 
   const result = await extractSuggestions(
-    { instructions: agentInstructions(stored.agentConfig), profile: stored.seed },
+    { instructions: agentInstructions(stored.agentConfig), profile: stored.seed, fillerPhrases: stored.agentConfig.call?.fillerPhrases },
     calls,
     cfg
   )

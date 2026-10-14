@@ -45,6 +45,9 @@ export interface AgentConfig {
     endOnSilenceSecs?: number
     patience?: 'patient' | 'normal' | 'eager'
     fillers?: boolean
+    /** Filler phrases learned from this agent's own calls (applied on the Learning page).
+     *  Used for slow-answer fillers and offered to the agent as natural reply openers. */
+    fillerPhrases?: string[]
   }
   /** Post-call analysis the provider runs: structured data + success criteria (cap 30 each). */
   analysis?: { dataCollection: DataCollectionField[]; successCriteria: SuccessCriterion[] }

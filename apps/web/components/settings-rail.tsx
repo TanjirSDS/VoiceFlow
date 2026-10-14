@@ -173,7 +173,8 @@ export function SettingsRail({
             <div>
               <Label htmlFor="fillers">Natural fillers</Label>
               <p className="text-xs text-muted-foreground">
-                Says &ldquo;Sure, one moment&rdquo; when an answer takes longer than 1.5 s, instead of silence.
+                Says a short &ldquo;Mm-hmm.&rdquo; (or phrases learned from your calls) when an answer takes
+                longer than 1.5 s, instead of silence.
               </p>
             </div>
             <Switch

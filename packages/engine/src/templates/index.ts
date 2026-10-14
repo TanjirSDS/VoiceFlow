@@ -23,6 +23,8 @@ export {
   applySuggestionToPrompt,
   FAQ_HEADING,
   LEARNED_HEADING,
+  MAX_FILLER_PHRASES,
+  mergeFillerPhrases,
   SUGGESTION_TYPES,
   suggestionTitle,
   type SuggestionPayload,

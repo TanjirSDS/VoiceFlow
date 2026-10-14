@@ -9,6 +9,7 @@ export const SUGGESTION_TYPES = [
   'prompt_tweak',
   'kb_gap',
   'escalation_rule',
+  'filler_phrases',
 ] as const
 export type SuggestionType = (typeof SUGGESTION_TYPES)[number]
 
@@ -21,6 +22,8 @@ export interface SuggestionPayload {
   instruction?: string
   /** kb_gap: what info the business needs to provide */
   topic?: string
+  /** filler_phrases: short natural phrases this agent's callers responded well to */
+  phrases?: string[]
   /** how many calls hit this (unanswered-question frequency) */
   frequency?: number
   /** model's one-line why */
@@ -98,8 +101,28 @@ export function applySuggestionToPrompt(
       return setSection(prompt, LEARNED_HEADING, items.map((b) => `- ${b}`).join('\n'))
     }
     case 'kb_gap':
+    case 'filler_phrases': // lives in call.fillerPhrases, not the prompt (mergeFillerPhrases)
       return null
   }
+}
+
+export const MAX_FILLER_PHRASES = 8
+const MAX_FILLER_CHARS = 30
+
+/** Fold learned phrases into the agent's list: newest first, case-insensitive dedupe, capped.
+ *  null = nothing new (or nothing usable) to apply. */
+export function mergeFillerPhrases(current: string[], add: unknown): string[] | null {
+  const fresh = (Array.isArray(add) ? add : [])
+    .filter((p): p is string => typeof p === 'string')
+    .map((p) => p.trim())
+    .filter((p) => p && p.length <= MAX_FILLER_CHARS)
+  const seen = new Set<string>()
+  const merged = [...fresh, ...current].filter((p) => {
+    const k = p.toLowerCase()
+    return seen.has(k) ? false : (seen.add(k), true)
+  })
+  const out = merged.slice(0, MAX_FILLER_PHRASES)
+  return out.length === current.length && out.every((p, i) => p === current[i]) ? null : out
 }
 
 /** One-line label for cards and the weekly email. */
@@ -113,5 +136,7 @@ export function suggestionTitle(type: SuggestionType, s: SuggestionPayload): str
       return `Escalation rule: ${s.instruction ?? '(missing instruction)'}`
     case 'kb_gap':
       return `Knowledge gap: ${s.topic ?? '(missing topic)'}`
+    case 'filler_phrases':
+      return `Filler words: ${(s.phrases ?? []).map((p) => `"${p}"`).join(', ') || '(none)'}`
   }
 }

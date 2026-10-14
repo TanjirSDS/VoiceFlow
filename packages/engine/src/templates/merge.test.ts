@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applySuggestionToPrompt, FAQ_HEADING, LEARNED_HEADING } from './merge'
+import { applySuggestionToPrompt, FAQ_HEADING, LEARNED_HEADING, MAX_FILLER_PHRASES, mergeFillerPhrases } from './merge'
 import { getSection } from './managed'
 
 const BASE = `You are the AI phone assistant for Joe's Plumbing.
@@ -66,5 +66,26 @@ describe('applySuggestionToPrompt', () => {
 
   it('never auto-applies kb_gap', () => {
     expect(applySuggestionToPrompt(BASE, 'kb_gap', { topic: 'gutter cleaning pricing' })).toBeNull()
+  })
+})
+
+describe('mergeFillerPhrases', () => {
+  it('puts new phrases first, dedupes case-insensitively, and caps the list', () => {
+    expect(mergeFillerPhrases(['Okay.'], ['Oh, gotcha.', 'okay.'])).toEqual(['Oh, gotcha.', 'okay.'])
+    const many = Array.from({ length: 12 }, (_, i) => `Phrase ${i}.`)
+    expect(mergeFillerPhrases([], many)).toHaveLength(MAX_FILLER_PHRASES)
+  })
+
+  it('drops non-strings, blanks and anything too long to be a filler', () => {
+    expect(mergeFillerPhrases([], [' Yeah, so. ', '', 42, 'That plan costs two thousand dollars a year.'])).toEqual(['Yeah, so.'])
+  })
+
+  it('returns null when nothing would change, so applying twice is a no-op', () => {
+    expect(mergeFillerPhrases(['Oh, gotcha.'], ['Oh, gotcha.'])).toBeNull()
+    expect(mergeFillerPhrases([], 'not a list')).toBeNull()
+  })
+
+  it('never lands in the prompt', () => {
+    expect(applySuggestionToPrompt('p', 'filler_phrases', { phrases: ['Oh, gotcha.'] })).toBeNull()
   })
 })
