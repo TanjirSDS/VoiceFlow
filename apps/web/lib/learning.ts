@@ -6,7 +6,7 @@
 // suggestions; never throws past extractSuggestions' caller.
 
 import type { BusinessProfile, SuggestionPayload, SuggestionType } from '@voiceflow/engine/templates'
-import { SUGGESTION_TYPES } from '@voiceflow/engine/templates'
+import { mergeFillerPhrases, SUGGESTION_TYPES } from '@voiceflow/engine/templates'
 import { extractJsonObject, type ClassifierConfig, type Judgement } from './outcome'
 
 // Token caps (item 2): per-call and whole-prompt character budgets, plus a hard
@@ -29,6 +29,8 @@ export interface CallForLearning {
 export interface LearningContext {
   instructions: string
   profile?: BusinessProfile | null
+  /** Filler phrases already applied (call.fillerPhrases), so they aren't proposed again. */
+  fillerPhrases?: string[]
 }
 
 const judgeLine = (j: Judgement) =>
@@ -72,6 +74,9 @@ Emit suggestions of exactly these types:
 - prompt_tweak: a short imperative instruction that would have made calls go better (e.g. wording to avoid, information to volunteer). Put it in "instruction".
 - escalation_rule: a rule for when to hand off to a human, learned from calls that escalated or failed. Put it in "instruction".
 - kb_gap: callers wanted information (or a service) the business facts do not cover and no transcript answers — only the owner can supply it. Put what is missing in "topic". Use this instead of faq_addition when you cannot know the answer.
+- filler_phrases: short natural reactions that would make the agent sound like a real person to THESE callers — modelled on how the callers themselves talk (their acknowledgements, their register), or replacing a stock phrase the agent kept repeating. Put 2-6 of them in "phrases", each 1-4 words, e.g. "Oh, gotcha." or "Yeah, makes sense." Each must be safe to say before ANY answer: never a fact, price, promise or question. Cite a caller quote that shows the register, or the agent's repeated phrase.
+
+Also look for speech that sounded robotic rather than human and fix it with a prompt_tweak: replies too long for a phone call, reading out lists, the same phrase every turn, scripted or formal wording, talking over the caller, ending a call while the caller still had something to say, or dragging it on after they were done.
 
 Rules:
 - Every suggestion MUST cite evidence: the call id from the "### Call <id>" header and a short verbatim quote from that transcript.
@@ -93,6 +98,7 @@ export function buildLearningMessages(ctx: LearningContext, calls: CallForLearni
     : ''
   const sections = [
     `## The agent's current instructions\n${ctx.instructions.slice(0, MAX_INSTRUCTION_CHARS) || '(none)'}`,
+    ctx.fillerPhrases?.length && `## Filler phrases the agent already uses\n${ctx.fillerPhrases.join(' | ')}`,
     facts && `## Business facts\n${facts}`,
     `## Recent calls with the judge's verdicts (${rendered.length} calls)\n${rendered.join('\n\n')}`,
   ]
@@ -124,7 +130,13 @@ export function parseSuggestions(content: string, validCallIds: Set<string>): Ex
       .map((e: { callId: string; quote: string }) => ({ callId: e.callId, quote: e.quote.slice(0, 500) }))
     if (!evidence.length) continue // no verifiable evidence → not a suggestion
     if (typeof item?.suggestion !== 'object' || item.suggestion === null) continue
-    out.push({ type, suggestion: item.suggestion as SuggestionPayload, evidence })
+    const suggestion = item.suggestion as SuggestionPayload
+    if (type === 'filler_phrases') {
+      const phrases = mergeFillerPhrases([], suggestion.phrases) // keeps only usable phrases
+      if (!phrases) continue
+      suggestion.phrases = phrases
+    }
+    out.push({ type, suggestion, evidence })
   }
   return out
 }

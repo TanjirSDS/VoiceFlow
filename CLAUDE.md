@@ -2014,3 +2014,41 @@ ever sees — rendered a broken image.
   on a notify_condition tool call (1.7-3.5 s), then answers. Avoid mid-call step changes.
 - RAG per turn cut to 5 chunks / 8k chars (was 8 / 15k).
 - "Learning" in the builder header is now a real (outline) button.
+
+### Human phone speech + faster replies (2026-10-14)
+- MEASURED FIRST (~/vf-sds-demo/bench.mjs: a scripted caller SPEAKS — TTS audio streamed in
+  real time, then silence, over the conversation websocket — so ASR + turn detection are in the
+  number; text-in sims skip both). Time from end of caller speech to first agent audio, 2 runs
+  each on copies of the SDS demo agent: GPT-4.1 mini via OpenRouter ~1.77 s; the SAME model
+  hosted by ElevenLabs ~1.35 s (the OpenRouter hop is ~0.4 s). turn_eagerness normal/eager made
+  no measurable difference with turn_v3 + speculative_turn, so 'patient' stays (fewer cut-offs).
+  gemini-3.5-flash-lite 1.29 s, gpt-5.4-mini 1.45 s, claude-haiku-4-5 1.69 s. TTS first byte:
+  eleven_v4_turbo 0.07 s, eleven_v3_conversational 0.16 s. English agents can't use flash_v2_5
+  ("English Agents must use turbo or flash v2"). Hosted gpt-4.1-mini stalled 5.3 s on 3 turns of
+  one run: EL hands a stalled LLM to the backup after cascade_timeout_seconds (default 4, min 2).
+- EVERY AGENT talks like a person on a live call: the engine appends a "## How you speak (live
+  phone call)" block to the owner's prompt at the provider boundary (so every creation path gets
+  it; getAgent strips it again), plus temperature 0.5 (EL default 0 = word-for-word identical
+  calls) and the end_call + skip_turn system tools (hang up after a spoken goodbye; stay quiet on
+  "give me a second"). Only sent with the prompt, so a Save that doesn't carry it leaves all three
+  alone. Existing agents get it on their next save (no mass-PATCH).
+- Reply OPENERS, not EL's LLM-written fillers: the block asks for a short reaction as its own
+  sentence ("Oh, gotcha.") — natural, and speech starts on it. EL's soft_timeout
+  use_llm_generated_message was tested and REJECTED: forced at 0.5 s, the filler model answered a
+  price question itself ("Around $1,500." — real price $2,064) before the real answer. Static
+  fillers stay as the 1.5 s safety net. Rules that DIDN'T hold: a word cap ("under 20 words") —
+  replies stayed 28-39; "answer in ONE short sentence, then at most one short question" holds the
+  shape. gpt-4.1-mini still opens ~1 in 10 replies with "Good question." despite the ban.
+- v4 Turbo PERFORMS audio tags (STT of "[laughs]" output = a laugh event, "[happy]" not spoken),
+  so EL's expressive_mode prompt is safe on it.
+- LEARNING proposes filler words: suggestion type filler_phrases {phrases} (0025 widens the type
+  check) — modelled on how the CALLERS talk, each 1-4 words and safe before any answer.
+  Applying merges into agentConfig.call.fillerPhrases (newest first, deduped, ≤8, ≤30 chars),
+  which become the prompt's opener examples AND lead the soft-timeout list. The learning prompt
+  also hunts robotic speech (long replies, lists, repeated phrases) → prompt_tweak.
+- DEFECT CAUGHT before shipping: updateAgentAction REPLACED agentConfig.call with the builder's
+  call settings, which don't carry fillerPhrases — every Save would have wiped them. Now merged
+  (save-call-merge.test.ts, mutation-checked).
+- Bench-copy conversations land in prod `calls` as orphan rows (agent_id/org_id NULL: the
+  workspace post-call webhook fires for every agent) — invisible to members, ignored by learning.
+

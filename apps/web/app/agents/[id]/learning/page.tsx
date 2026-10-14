@@ -31,6 +31,7 @@ const TYPE_BADGE: Record<SuggestionType, { label: string; variant: 'default' | '
   prompt_tweak: { label: 'Prompt tweak', variant: 'secondary' },
   escalation_rule: { label: 'Escalation', variant: 'warn' },
   kb_gap: { label: 'Knowledge gap', variant: 'outline' },
+  filler_phrases: { label: 'Filler words', variant: 'secondary' },
 }
 
 interface SuggestionRow {

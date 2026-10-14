@@ -79,6 +79,34 @@ const BACKCHANNELS = ['uh-huh', 'mm-hmm', 'mhm', 'yeah', 'right', 'okay', 'got i
 const FILLERS = ['Mm-hmm.', 'Okay.', 'Right, one sec.']
 const RAG_WAIT_MS = 90_000
 
+// Every agent talks like a person on a live call (2026-10-14). Added to the owner's prompt at
+// the provider boundary, so every creation path gets it and the stored prompt stays theirs;
+// getAgent strips it again. The reply opener is its own short sentence so speech starts on it
+// while the rest is still being written. EL's LLM-written soft-timeout fillers are NOT used:
+// in testing one answered the caller's price question itself with a made-up figure.
+const STYLE_HEADING = '## How you speak (live phone call)'
+export function phoneStyle(learned: string[] = []): string {
+  const openers = learned.length ? learned.map((p) => `"${p}"`).join(', ') : '"Oh, gotcha.", "Yeah, so.", "Mm, okay.", "Ah, right.", "Sure thing."'
+  return `${STYLE_HEADING}
+- Talk like a real person on the phone, not like you're reading. Contractions, everyday words, short sentences.
+- Start most replies with a quick reaction to what they just said, as its own short sentence (${openers}), then answer. Vary it, never the same one twice in a row, skip it sometimes, and never open with "Good question" or "Great question".
+- Answer in ONE short sentence, then at most one short question, then stop and let them talk. No extra offers or details in the same turn unless they ask.
+- A light "um" or "so" when you're working something out is fine, at most one per reply.
+- Never read lists, links or long numbers in one go; say them the way a person would.
+- Match their energy: relaxed with relaxed callers; calm, brief and filler-free with busy or upset ones.
+- No stock phrases: "Absolutely!", "I understand your concern", "Is there anything else I can help you with today?".
+- If they say "hold on" or "give me a second", wait quietly. If they cut in, stop and answer what they just said.
+- When they're done (a goodbye, "that's all", or they ask to end it), say a short warm goodbye, then end the call. Never end it while they're still talking or asking.`
+}
+// LLM sampling for natural variety; 0 (EL's default) makes every call word-for-word the same.
+const VOICE_TEMPERATURE = 0.5
+// System tools every agent gets: hang up after a spoken goodbye, and stay quiet while the
+// caller asks for a moment. PATCH deep-merges, so other built-in tools are left alone.
+const BUILT_IN_TOOLS = {
+  end_call: { type: 'system', name: 'end_call', description: '', params: { system_tool_type: 'end_call' } },
+  skip_turn: { type: 'system', name: 'skip_turn', description: '', params: { system_tool_type: 'skip_turn' } },
+}
+
 export class ElevenLabsEngine implements VoiceEngine {
   constructor(private opts: ElevenLabsEngineOpts) {}
 
@@ -125,7 +153,11 @@ export class ElevenLabsEngine implements VoiceEngine {
         ...(cfg.firstMessage !== undefined && { first_message: cfg.firstMessage }),
         language: cfg.language ?? 'en',
         prompt: {
-          ...(cfg.systemPrompt !== undefined && { prompt: cfg.systemPrompt }),
+          ...(cfg.systemPrompt !== undefined && {
+            prompt: `${cfg.systemPrompt.trimEnd()}\n\n${phoneStyle(cfg.call?.fillerPhrases)}`,
+            temperature: VOICE_TEMPERATURE,
+            built_in_tools: BUILT_IN_TOOLS,
+          }),
           ...(nodeKb.length && { rag: RAG }),
           ...(custom
             ? {
@@ -167,11 +199,13 @@ export class ElevenLabsEngine implements VoiceEngine {
       turn.merge_with_default_ignore_terms = true
     }
     if (cfg.call?.fillers !== undefined) {
+      // learned phrases first; the neutral defaults keep the list safe for any moment
+      const fillers = [...new Set([...(cfg.call.fillerPhrases ?? []), ...FILLERS])]
       turn.soft_timeout_config = cfg.call.fillers
         ? {
             timeout_seconds: 1.5,
-            message: FILLERS[0],
-            additional_soft_timeout_messages: FILLERS.slice(1),
+            message: fillers[0],
+            additional_soft_timeout_messages: fillers.slice(1),
             randomize_fillers: true,
             max_soft_timeouts_per_generation: 1,
             disable_until_first_user_message: true,
@@ -249,7 +283,7 @@ export class ElevenLabsEngine implements VoiceEngine {
     const workflow = workflowFromProvider(a.workflow)
     return {
       name: a.name ?? '',
-      systemPrompt: prompt.prompt ?? '',
+      systemPrompt: (prompt.prompt ?? '').split(`\n\n${STYLE_HEADING}`)[0],
       firstMessage: agent.first_message ?? '',
       voiceId: a.conversation_config?.tts?.voice_id ?? '',
       ...(prompt.llm && prompt.llm !== 'custom-llm' && { llm: prompt.llm }),
