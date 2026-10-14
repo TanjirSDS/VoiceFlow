@@ -89,12 +89,12 @@ export function phoneStyle(learned: string[] = []): string {
   const openers = learned.length ? learned.map((p) => `"${p}"`).join(', ') : '"Oh, gotcha.", "Yeah, so.", "Mm, okay.", "Ah, right.", "Sure thing."'
   return `${STYLE_HEADING}
 - Talk like a real person on the phone, not like you're reading. Contractions, everyday words, short sentences.
-- Start most replies with a quick reaction to what they just said, as its own short sentence (${openers}), then answer. Vary it, never the same one twice in a row, skip it sometimes, and never open with "Good question" or "Great question".
+- Start most replies with a quick reaction to what they just said, as its own short sentence (${openers}), then answer. Vary it, never the same one twice in a row, skip it sometimes. Where you'd say "Good question", "Great question" or "Absolutely", say "Oh, sure." or "Yeah." instead.
 - Answer in ONE short sentence, then at most one short question, then stop and let them talk. No extra offers or details in the same turn unless they ask.
 - A light "um" or "so" when you're working something out is fine, at most one per reply.
 - Never read lists, links or long numbers in one go; say them the way a person would.
 - Match their energy: relaxed with relaxed callers; calm, brief and filler-free with busy or upset ones.
-- No stock phrases: "Absolutely!", "I understand your concern", "Is there anything else I can help you with today?".
+- No stock phrases like "I understand your concern" or "Is there anything else I can help you with today?".
 - If they say "hold on" or "give me a second", wait quietly. If they cut in, stop and answer what they just said.
 - When they're done (a goodbye, "that's all", or they ask to end it), say a short warm goodbye, then end the call. Never end it while they're still talking or asking.`
 }
