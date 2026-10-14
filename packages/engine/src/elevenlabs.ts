@@ -76,7 +76,12 @@ const BACKCHANNELS = ['uh-huh', 'mm-hmm', 'mhm', 'yeah', 'right', 'okay', 'got i
 // Neutral acknowledgements only: a filler fires on ANY slow turn — after "I'm busy" or
 // "don't call me" too — so "Good question" / "Let me check that" sounded robotic (seen in
 // end-to-end tests, 2026-10-09).
-const FILLERS = ['Mm-hmm.', 'Okay.', 'Right, one sec.']
+// EL raises max_soft_timeouts_per_generation to the number of phrases sent (verified
+// 2026-10-14: max 1 + 3 phrases is stored as max 3), so every extra phrase is one more filler
+// a stalled answer stacks ("Mm-hmm. Okay. Right, one sec."). Hence exactly two, in order:
+// a quick acknowledgement at 1.5 s, and "one sec" at 3 s only if it's still thinking.
+const FILLER_ACK = 'Mm-hmm.'
+const FILLER_WAIT = 'Right, one sec.'
 const RAG_WAIT_MS = 90_000
 
 // Every agent talks like a person on a live call (2026-10-14). Added to the owner's prompt at
@@ -199,15 +204,13 @@ export class ElevenLabsEngine implements VoiceEngine {
       turn.merge_with_default_ignore_terms = true
     }
     if (cfg.call?.fillers !== undefined) {
-      // learned phrases first; the neutral defaults keep the list safe for any moment
-      const fillers = [...new Set([...(cfg.call.fillerPhrases ?? []), ...FILLERS])]
       turn.soft_timeout_config = cfg.call.fillers
         ? {
             timeout_seconds: 1.5,
-            message: fillers[0],
-            additional_soft_timeout_messages: fillers.slice(1),
-            randomize_fillers: true,
-            max_soft_timeouts_per_generation: 1,
+            message: cfg.call.fillerPhrases?.[0] ?? FILLER_ACK, // the newest learned phrase
+            additional_soft_timeout_messages: [FILLER_WAIT],
+            randomize_fillers: false,
+            max_soft_timeouts_per_generation: 2,
             disable_until_first_user_message: true,
           }
         : { timeout_seconds: -1 }
