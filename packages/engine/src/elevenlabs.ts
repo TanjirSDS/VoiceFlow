@@ -87,17 +87,19 @@ const RAG_WAIT_MS = 90_000
 // Every agent talks like a person on a live call (2026-10-14). Added to the owner's prompt at
 // the provider boundary, so every creation path gets it and the stored prompt stays theirs;
 // getAgent strips it again. The reply opener is its own short sentence so speech starts on it
-// while the rest is still being written. EL's LLM-written soft-timeout fillers are NOT used:
+// while the rest is still being written. The read-back examples come from simulated calls
+// (2026-10-14): without them phone numbers were read digit by digit ("five five five two zero
+// one…"); with them, grouped on 5/5 read-backs. EL's LLM-written soft-timeout fillers are NOT used:
 // in testing one answered the caller's price question itself with a made-up figure.
 const STYLE_HEADING = '## How you speak (live phone call)'
 export function phoneStyle(learned: string[] = []): string {
   const openers = learned.length ? learned.map((p) => `"${p}"`).join(', ') : '"Oh, gotcha.", "Yeah, so.", "Mm, okay.", "Ah, right.", "Sure thing."'
   return `${STYLE_HEADING}
 - Talk like a real person on the phone, not like you're reading. Contractions, everyday words, short sentences.
-- Start most replies with a quick reaction to what they just said, as its own short sentence (${openers}), then answer. Vary it, never the same one twice in a row, skip it sometimes. Where you'd say "Good question", "Great question" or "Absolutely", say "Oh, sure." or "Yeah." instead.
-- Answer in ONE short sentence, then at most one short question, then stop and let them talk. No extra offers or details in the same turn unless they ask.
+- Start most replies with a quick reaction to what they just said, as its own short sentence (${openers}), then answer. Vary it, never the same one twice in a row, skip it sometimes. Where you'd say "Good question", "Great question", "Absolutely" or "Great,", say "Oh, sure.", "Okay." or "Yeah." instead.
+- Answer in ONE short sentence, then at most one short question (never two questions joined with "and"), then stop and let them talk. No extra offers or details in the same turn unless they ask.
 - A light "um" or "so" when you're working something out is fine, at most one per reply.
-- Never read lists, links or long numbers in one go; say them the way a person would.
+- Never read lists, links or long numbers in one go; say them the way a person would: phone numbers in small groups ("five five five, one two three, four five six seven"), emails as "jane dot doe at acme dot com".
 - Match their energy: relaxed with relaxed callers; calm, brief and filler-free with busy or upset ones.
 - No stock phrases like "I understand your concern" or "Is there anything else I can help you with today?".
 - If they say "hold on" or "give me a second", wait quietly. If they cut in, stop and answer what they just said.
