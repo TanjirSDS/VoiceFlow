@@ -596,6 +596,9 @@ describe('human phone speech', () => {
     // spoken read-backs: phone numbers in groups, emails as words (simulated calls read digit by digit)
     expect(prompt.prompt).toContain('phone numbers in small groups')
     expect(prompt.prompt).toContain('never two questions joined with "and"')
+    // calm goodbye: "!" made the voice sound over-excited on a real call
+    expect(prompt.prompt).toContain('calm goodbye')
+    expect(prompt.prompt).not.toContain('warm goodbye')
     // a save that doesn't carry the prompt leaves all three alone (PATCH deep-merges)
     const other = (await patchBody({ call: { maxDurationSecs: 300 } })).conversation_config.agent.prompt
     expect(['prompt', 'temperature', 'built_in_tools'].some((k) => k in other)).toBe(false)
