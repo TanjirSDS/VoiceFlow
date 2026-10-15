@@ -490,7 +490,7 @@ describe('turn-taking and shared secrets', () => {
     return { calls, restore: () => { globalThis.fetch = orig } }
   }
 
-  it('patient turn-taking waits for the caller, and backchannels do not cut the agent off', async () => {
+  it('patient turn-taking waits for the caller, and any interruption stops the agent at once', async () => {
     const s = capture()
     try {
       await engine.updateAgent('agent_1', { call: { endOnSilenceSecs: 30, patience: 'patient', fillers: true } })
@@ -500,8 +500,10 @@ describe('turn-taking and shared secrets', () => {
     const turn = s.calls[0]!.body.conversation_config.turn
     expect(turn.turn_eagerness).toBe('patient')
     expect(turn.silence_end_call_timeout).toBe(30) // merged into the SAME turn object, not overwritten
-    expect(turn.interruption_ignore_terms).toEqual(expect.arrayContaining(['uh-huh', 'mm-hmm']))
-    expect(turn.merge_with_default_ignore_terms).toBe(true)
+    // an ignore list makes EL transcribe before it stops talking (barge-in bench, real call 2026-10-15)
+    expect(turn.interruption_ignore_terms).toEqual([])
+    expect(turn.interruption_ignore_term_languages).toEqual([])
+    expect(turn.merge_with_default_ignore_terms).toBe(false)
     expect(turn.soft_timeout_config).toMatchObject({
       timeout_seconds: 1.5,
       message: 'Mm-hmm.',
@@ -593,13 +595,21 @@ describe('human phone speech', () => {
     expect(prompt.prompt.startsWith('You are Acme.\n\n## How you speak (live phone call)')).toBe(true)
     expect(prompt.temperature).toBeGreaterThan(0)
     expect(Object.keys(prompt.built_in_tools)).toEqual(['end_call', 'skip_turn'])
+    // a real call hung up in the same reply that asked "…, right?"
+    expect(prompt.built_in_tools.end_call.description).toContain('Never use it in a reply that asks a question')
     // spoken read-backs: phone numbers in groups, emails as words (simulated calls read digit by digit)
     expect(prompt.prompt).toContain('phone numbers in small groups')
     expect(prompt.prompt).toContain('never two questions joined with "and"')
     // calm goodbye: "!" made the voice sound over-excited on a real call
-    expect(prompt.prompt).toContain('calm goodbye')
-    expect(prompt.prompt).toContain('ends with "Have a great day."')
+    expect(prompt.prompt).toContain('then "Have a great day." Say it in a calm, even voice with no exclamation marks')
     expect(prompt.prompt).not.toContain('warm goodbye')
+    // v2, from two real calls that sounded robotic (2026-10-15)
+    expect(prompt.prompt).toContain('Answer exactly what they just asked before anything else')
+    expect(prompt.prompt).toContain("Never ask something they've already told you")
+    expect(prompt.prompt).toContain('"Sorry, go ahead, I\'m listening."')
+    expect(prompt.prompt).toContain("don't guess: ask them to say it again")
+    expect(prompt.prompt).toContain('Be warm and empathetic')
+    expect(prompt.prompt).not.toContain('Start most replies with a quick reaction')
     // a save that doesn't carry the prompt leaves all three alone (PATCH deep-merges)
     const other = (await patchBody({ call: { maxDurationSecs: 300 } })).conversation_config.agent.prompt
     expect(['prompt', 'temperature', 'built_in_tools'].some((k) => k in other)).toBe(false)
@@ -607,7 +617,7 @@ describe('human phone speech', () => {
 
   it('learned filler phrases become the reply openers; the newest is the slow-answer filler', async () => {
     const body = await patchBody({ systemPrompt: 'x', call: { fillers: true, fillerPhrases: ['Oh, gotcha.', 'Okay.'] } })
-    expect(body.conversation_config.agent.prompt.prompt).toContain('("Oh, gotcha.", "Okay.")')
+    expect(body.conversation_config.agent.prompt.prompt).toContain('or with a quick "Oh, gotcha.", "Okay.".')
     const soft = body.conversation_config.turn.soft_timeout_config
     // EL raises the max to the number of phrases, so never more than two (no stacked fillers)
     expect([soft.message, ...soft.additional_soft_timeout_messages]).toEqual(['Oh, gotcha.', 'Right, one sec.'])

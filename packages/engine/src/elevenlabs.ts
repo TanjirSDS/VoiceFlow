@@ -70,9 +70,6 @@ const RAG_MODEL = 'e5_mistral_7b_instruct'
 // ~15k chars of context before every answer (LLM first-byte 1.2-2.8 s).
 const RAG = { enabled: true, max_retrieved_rag_chunks_count: 5, max_documents_length: 8000 }
 
-// Short acknowledgements a caller says WHILE the agent talks. They shouldn't cut it off;
-// a real interruption still does. Used with EL's curated English defaults.
-const BACKCHANNELS = ['uh-huh', 'mm-hmm', 'mhm', 'yeah', 'right', 'okay', 'got it', 'i see']
 // Neutral acknowledgements only: a filler fires on ANY slow turn — after "I'm busy" or
 // "don't call me" too — so "Good question" / "Let me check that" sounded robotic (seen in
 // end-to-end tests, 2026-10-09).
@@ -86,35 +83,44 @@ const RAG_WAIT_MS = 90_000
 
 // Every agent talks like a person on a live call (2026-10-14). Added to the owner's prompt at
 // the provider boundary, so every creation path gets it and the stored prompt stays theirs;
-// getAgent strips it again. The reply opener is its own short sentence so speech starts on it
-// while the rest is still being written. The read-back examples come from simulated calls
-// (2026-10-14): without them phone numbers were read digit by digit ("five five five two zero
-// one…"); with them, grouped on 5/5 read-backs. EL's LLM-written soft-timeout fillers are NOT used:
-// in testing one answered the caller's price question itself with a made-up figure.
-// Goodbyes are calm and have no "!": eleven_v4_turbo voices "!" as excitement. On a real call
-// (2026-10-15) "Thanks for calling SDS Manager! Have a great day." came out at 192 Hz against
-// 127 Hz for the answers. "Thanks for your time. Have a great day." renders at ~126 Hz (TTS,
-// same voice) — the owner wants "Have a great day", just not excited.
+// getAgent strips it again. The read-back examples come from simulated calls (2026-10-14):
+// without them phone numbers were read digit by digit; with them, grouped on 5/5 read-backs.
+// EL's LLM-written soft-timeout fillers are NOT used: in testing one answered the caller's price
+// question itself with a made-up figure. Goodbyes have no "!": eleven_v4_turbo voices it as
+// excitement (192 vs 127 Hz on a real call, 2026-10-15); the owner wants "Have a great day", calm.
+// v2 (2026-10-15), from two real calls that sounded robotic: every reply was "stock reaction +
+// one sentence + a question", so it re-asked what the caller had just said ("I just said that"),
+// answered a half-heard fragment ("virtual company") instead of asking, talked on when cut off,
+// used the caller's name every turn, and hung up in the same reply that asked "…, right?".
 const STYLE_HEADING = '## How you speak (live phone call)'
 export function phoneStyle(learned: string[] = []): string {
-  const openers = learned.length ? learned.map((p) => `"${p}"`).join(', ') : '"Oh, gotcha.", "Yeah, so.", "Mm, okay.", "Ah, right.", "Sure thing."'
+  const reactions = learned.length ? learned.map((p) => `"${p}"`).join(', ') : '"Oh, gotcha.", "Mm, okay.", "Ah, right."'
   return `${STYLE_HEADING}
-- Talk like a real person on the phone, not like you're reading. Contractions, everyday words, short sentences.
-- Start most replies with a quick reaction to what they just said, as its own short sentence (${openers}), then answer. Vary it, never the same one twice in a row, skip it sometimes. Where you'd say "Good question", "Great question", "Absolutely" or "Great,", say "Oh, sure.", "Okay." or "Yeah." instead.
-- Answer in ONE short sentence, then at most one short question (never two questions joined with "and"), then stop and let them talk. No extra offers or details in the same turn unless they ask.
+- Talk like a real person on the phone, not like you're reading: contractions, everyday words, short sentences, warm and relaxed.
+- Listen first. Answer exactly what they just asked before anything else. Bring up your own topics (prices, a demo, more questions) only once their question is answered.
+- Answer in ONE short sentence (a second only if they asked two things), then stop and let them talk. Don't tack a question onto every answer: ask one only when you need it to help them, and never two questions joined with "and". Never ask something they've already told you, and never ask the same thing twice.
+- React to what they actually said, the way a friend would ("Five hundred, okay.", "Oh, that's a pain."), or with a quick ${reactions}. Skip the reaction about half the time and just answer, and never start two replies in a row the same way. Where you'd say "Good question", "Great question", "Absolutely" or "Great,", say "Oh, sure.", "Okay." or "Yeah." instead.
+- Be warm and empathetic. When they mention a problem, a hassle or a worry, acknowledge it in a few genuine words first, then help. If they sound annoyed with you, say "Sorry about that." once, simply, and then do what they asked.
+- If you didn't catch what they said, or it's cut off or doesn't make sense, don't guess: ask them to say it again ("Sorry, I missed that. What was that about versions?").
+- If they talk over you, you've already stopped: don't finish or repeat what you were saying. If they only said something short like "hello?", "wait", "sorry" or "can I ask something?", just say "Sorry, go ahead, I'm listening." (or "Yes, I can hear you, go ahead.") and let them talk. If they only said "mm-hmm", "yeah" or "okay", they're following along: finish your point in a few words. If they asked something, answer that.
+- If they say "hold on" or "give me a second", wait quietly.
+- Say their name at most twice in the whole call; when they give you details, acknowledge with "Got it." or "Perfect." instead.
 - A light "um" or "so" when you're working something out is fine, at most one per reply.
 - Never read lists, links or long numbers in one go; say them the way a person would: phone numbers in small groups ("five five five, one two three, four five six seven"), emails as "jane dot doe at acme dot com".
 - Match their energy: relaxed with relaxed callers; calm, brief and filler-free with busy or upset ones.
-- No stock phrases like "I understand your concern" or "Is there anything else I can help you with today?".
-- If they say "hold on" or "give me a second", wait quietly. If they cut in, stop and answer what they just said.
-- When they're done (a goodbye, "that's all", or they ask to end it), say a short, calm goodbye in an even, low-key voice that ends with "Have a great day." ("Thanks for your time. Have a great day.", "Okay, thanks for your time. Have a great day."), then end the call. No exclamation marks: say it calmly, not cheerfully. Never end it while they're still talking or asking.`
+- No stock phrases like "I understand your concern", "Is there anything else I can help you with today?" or "What would you like to say?".
+- When they're done (a goodbye, "that's all", or they ask to end it), close the way a person would: a short thanks ("Thanks for calling." if they called you, "Thanks for your time." if you called them), the next step in a few words if there is one, then "Have a great day." Say it in a calm, even voice with no exclamation marks. Only then end the call: never in a reply that asks something, and never while they're still talking or confirming details.`
 }
 // LLM sampling for natural variety; 0 (EL's default) makes every call word-for-word the same.
 const VOICE_TEMPERATURE = 0.5
 // System tools every agent gets: hang up after a spoken goodbye, and stay quiet while the
 // caller asks for a moment. PATCH deep-merges, so other built-in tools are left alone.
+// end_call carries its own rule: on a real call (2026-10-15) the model asked "…, right?" and
+// hung up in the same reply, so the caller never got to answer.
+const END_CALL_RULE =
+  "Hang up. Use this only once the caller has clearly finished (they said goodbye, or that they have nothing else) AND you are not waiting for an answer from them. Never use it in a reply that asks a question, right after asking them to confirm something, or while they're still talking or giving details."
 const BUILT_IN_TOOLS = {
-  end_call: { type: 'system', name: 'end_call', description: '', params: { system_tool_type: 'end_call' } },
+  end_call: { type: 'system', name: 'end_call', description: END_CALL_RULE, params: { system_tool_type: 'end_call' } },
   skip_turn: { type: 'system', name: 'skip_turn', description: '', params: { system_tool_type: 'skip_turn' } },
 }
 
@@ -200,14 +206,19 @@ export class ElevenLabsEngine implements VoiceEngine {
       conversation_config.conversation = { max_duration_seconds: cfg.call.maxDurationSecs }
     // Turn-taking lives under conversation_config.turn (TurnConfig, verified 2026-10-09):
     // turn_eagerness patient|normal|eager, soft_timeout_config (filler while the LLM is slow),
-    // interruption_ignore_terms (backchannels that must not cut the agent off).
+    // interruption_ignore_terms (cleared: every interruption stops the agent).
     const turn: Record<string, unknown> = {}
     if (cfg.call?.endOnSilenceSecs !== undefined) turn.silence_end_call_timeout = cfg.call.endOnSilenceSecs
     if (cfg.call?.patience) {
       turn.turn_eagerness = cfg.call.patience
-      turn.interruption_ignore_terms = BACKCHANNELS
-      turn.interruption_ignore_term_languages = ['en']
-      turn.merge_with_default_ignore_terms = true
+      // Any interruption stops the agent at once. An ignore list ("yeah", "okay"…) makes EL
+      // transcribe the caller before deciding, so the agent talked on: on a real call (2026-10-15)
+      // it spoke over the caller for ~3 s; barge-in bench median 894 → 757 ms, "Yeah, but how
+      // much…" 910 → 620 ms without one. The style block handles a mere "mm-hmm". Cleared
+      // explicitly because PATCH deep-merges and older agents carry the list.
+      turn.interruption_ignore_terms = []
+      turn.interruption_ignore_term_languages = []
+      turn.merge_with_default_ignore_terms = false
     }
     if (cfg.call?.fillers !== undefined) {
       turn.soft_timeout_config = cfg.call.fillers
