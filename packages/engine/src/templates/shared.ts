@@ -38,16 +38,17 @@ export const TONE: Record<GreetingStyle, string> = {
 
 // ---------------------------------------------------------------------------
 // GREETING (the agent's first_message). Must disclose the AI up front — this is
-// a hard product requirement, keep the disclosure in every variant.
+// a hard product requirement, keep the disclosure in every variant. No "!": the
+// voice reads it as excitement, so the call opened sounding fake (2026-10-15).
 // ---------------------------------------------------------------------------
 export function greeting(p: BusinessProfile): string {
   switch (p.greetingStyle) {
     case 'professional':
       return `Thank you for calling ${p.businessName}. I'm an AI assistant and I can help with most questions. How may I help you today?`
     case 'friendly':
-      return `Hi, thanks for calling ${p.businessName}! I'm the AI assistant here — how can I help you today?`
+      return `Hi, thanks for calling ${p.businessName}. I'm the AI assistant here, how can I help you today?`
     case 'casual':
-      return `Hey there, you've reached ${p.businessName}! I'm the AI assistant — what can I do for you?`
+      return `Hey there, you've reached ${p.businessName}. I'm the AI assistant, what can I do for you?`
   }
 }
 

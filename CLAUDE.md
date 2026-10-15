@@ -2093,3 +2093,30 @@ ever sees — rendered a broken image.
   0/7 with "!", outbound never says "thanks for calling".
 - NOT fixed here: the SDS demo flow's inbound→End edge sometimes fires on the caller's "bye"
   before the agent speaks, and EL's End step hangs up silently (2 of 8 baseline calls).
+
+### Human conversation v2 (2026-10-15)
+- Two real calls to the SDS demo number sounded robotic. Evidence from the EL transcripts and a
+  diarized recording: every reply was "stock reaction + one sentence + a question", so the agent
+  re-asked what the caller had just said ("I just said that. Why would you ask me that?"); it
+  answered a half-heard fragment ("virtual company") instead of asking; it talked over the caller
+  for ~3 s across two attempts to cut in; it used the caller's name in almost every reply; it
+  called end_call in the same reply that asked "…, right?", so the caller never answered.
+- Interruptions: interruption_ignore_terms is now cleared (and the curated defaults off). With a
+  list, EL has to transcribe the caller before it decides, so the agent keeps talking. Barge-in
+  bench (real caller audio streamed over the agent's answer, 8 runs each): median 894 → 757 ms,
+  "Yeah, but how much does it cost?" ~910 → ~620 ms. A mere "mm-hmm" is now handled in the
+  style block (finish the point in a few words).
+- phoneStyle v2 (targeted lines, not a rewrite): listen first and answer the actual question; ONE
+  short sentence; no question tacked onto every answer; never re-ask what they've told you;
+  react to what they said, not a stock word; empathy line; "didn't catch that" → ask again; cut
+  off → "Sorry, go ahead, I'm listening."; name at most twice ("Got it." instead); goodbye =
+  short thanks that fits the direction + next step + "Have a great day." (calm, no "!").
+- end_call now carries a description: only once the caller has finished AND you're not waiting
+  for an answer; never in a reply that asks a question.
+- Greetings: "!" removed from the friendly/casual first messages (voiced as excitement).
+- Scripted replays of the two real calls (3 runs each, agent copy): goodbye spoken 9/9 once the
+  demo flow's inbound/outbound → End edges were removed (with them: 0/6 — the edge fired on the
+  caller's "bye" and EL's End step hung up silently, the open item above); median words/turn
+  36 vs 37; pricing guardrail 17/17 free-plan replies pass.
+- The SDS demo agent's own prompt/flow changes (price only when asked, prices as count ranges,
+  calmer openers, no End edges) are applied by ~/vf-sds-demo/human2, not by this code.
