@@ -93,7 +93,8 @@ const RAG_WAIT_MS = 90_000
 // in testing one answered the caller's price question itself with a made-up figure.
 // Goodbyes are calm and have no "!": eleven_v4_turbo voices "!" as excitement. On a real call
 // (2026-10-15) "Thanks for calling SDS Manager! Have a great day." came out at 192 Hz against
-// 127 Hz for the answers; the same words ending in "." render ~45 Hz lower.
+// 127 Hz for the answers. "Thanks for your time. Have a great day." renders at ~126 Hz (TTS,
+// same voice) — the owner wants "Have a great day", just not excited.
 const STYLE_HEADING = '## How you speak (live phone call)'
 export function phoneStyle(learned: string[] = []): string {
   const openers = learned.length ? learned.map((p) => `"${p}"`).join(', ') : '"Oh, gotcha.", "Yeah, so.", "Mm, okay.", "Ah, right.", "Sure thing."'
@@ -106,7 +107,7 @@ export function phoneStyle(learned: string[] = []): string {
 - Match their energy: relaxed with relaxed callers; calm, brief and filler-free with busy or upset ones.
 - No stock phrases like "I understand your concern" or "Is there anything else I can help you with today?".
 - If they say "hold on" or "give me a second", wait quietly. If they cut in, stop and answer what they just said.
-- When they're done (a goodbye, "that's all", or they ask to end it), say a short, calm goodbye in an even, low-key voice ("Alright, thanks for your time. Bye.", "Alright, thanks. Bye now."), then end the call. No exclamation marks and no cheery lines like "Have a great day!". Never end it while they're still talking or asking.`
+- When they're done (a goodbye, "that's all", or they ask to end it), say a short, calm goodbye in an even, low-key voice that ends with "Have a great day." ("Thanks for your time. Have a great day.", "Okay, thanks for your time. Have a great day."), then end the call. No exclamation marks: say it calmly, not cheerfully. Never end it while they're still talking or asking.`
 }
 // LLM sampling for natural variety; 0 (EL's default) makes every call word-for-word the same.
 const VOICE_TEMPERATURE = 0.5

@@ -2087,5 +2087,9 @@ ever sees — rendered a broken image.
   directions (outbound must never say "thanks for calling") and bans "!" and cheery lines there.
   Simulated calls: goodbyes with "!" 6/6 → 0/9, cheery lines 3 → 0, goodbye pitch 168 → 145 Hz
   mean; mid-call replies never had "!" (0/30); pricing guardrail 12/12 free-plan replies pass.
+- FOLLOW-UP (same day): the owner wants "Have a great day", just calm. The goodbye now ENDS with
+  "Have a great day." (period). TTS, same voice: "Thanks for your time. Have a great day." 126 Hz
+  (= the answers' 127 Hz) vs 204 Hz for the "!" version. Sims: 7/7 spoken goodbyes end with it,
+  0/7 with "!", outbound never says "thanks for calling".
 - NOT fixed here: the SDS demo flow's inbound→End edge sometimes fires on the caller's "bye"
   before the agent speaks, and EL's End step hangs up silently (2 of 8 baseline calls).
