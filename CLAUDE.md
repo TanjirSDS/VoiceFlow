@@ -2077,3 +2077,15 @@ ever sees — rendered a broken image.
   SDS pricing guardrail (2/12 each) and sprinkle audio tags ([happy], [smile]). gpt-4.1-mini
   emits no tags. ChatGPT voice runs on OpenAI's full-duplex speech model, not a cascade; EL's
   floor here is ~1.4 s (turn wait ~0.3 + RAG 0.15 + LLM ~0.6 + TTS 0.08).
+
+### Calm goodbyes (2026-10-15)
+- Goodbyes sounded over-excited. Cause: phoneStyle asked for a "short warm goodbye", the model
+  wrote it with "!" ("Thanks for calling SDS Manager! Have a great day.") and eleven_v4_turbo
+  voices "!" as excitement. Real call: goodbye 192 Hz vs 127 Hz for the answers; the same words
+  ending in "." render ~45 Hz lower (TTS, same voice + settings).
+- phoneStyle now asks for a calm, low-key goodbye with two examples that work in both call
+  directions (outbound must never say "thanks for calling") and bans "!" and cheery lines there.
+  Simulated calls: goodbyes with "!" 6/6 → 0/9, cheery lines 3 → 0, goodbye pitch 168 → 145 Hz
+  mean; mid-call replies never had "!" (0/30); pricing guardrail 12/12 free-plan replies pass.
+- NOT fixed here: the SDS demo flow's inbound→End edge sometimes fires on the caller's "bye"
+  before the agent speaks, and EL's End step hangs up silently (2 of 8 baseline calls).

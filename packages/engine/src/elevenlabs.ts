@@ -91,6 +91,9 @@ const RAG_WAIT_MS = 90_000
 // (2026-10-14): without them phone numbers were read digit by digit ("five five five two zero
 // one…"); with them, grouped on 5/5 read-backs. EL's LLM-written soft-timeout fillers are NOT used:
 // in testing one answered the caller's price question itself with a made-up figure.
+// Goodbyes are calm and have no "!": eleven_v4_turbo voices "!" as excitement. On a real call
+// (2026-10-15) "Thanks for calling SDS Manager! Have a great day." came out at 192 Hz against
+// 127 Hz for the answers; the same words ending in "." render ~45 Hz lower.
 const STYLE_HEADING = '## How you speak (live phone call)'
 export function phoneStyle(learned: string[] = []): string {
   const openers = learned.length ? learned.map((p) => `"${p}"`).join(', ') : '"Oh, gotcha.", "Yeah, so.", "Mm, okay.", "Ah, right.", "Sure thing."'
@@ -103,7 +106,7 @@ export function phoneStyle(learned: string[] = []): string {
 - Match their energy: relaxed with relaxed callers; calm, brief and filler-free with busy or upset ones.
 - No stock phrases like "I understand your concern" or "Is there anything else I can help you with today?".
 - If they say "hold on" or "give me a second", wait quietly. If they cut in, stop and answer what they just said.
-- When they're done (a goodbye, "that's all", or they ask to end it), say a short warm goodbye, then end the call. Never end it while they're still talking or asking.`
+- When they're done (a goodbye, "that's all", or they ask to end it), say a short, calm goodbye in an even, low-key voice ("Alright, thanks for your time. Bye.", "Alright, thanks. Bye now."), then end the call. No exclamation marks and no cheery lines like "Have a great day!". Never end it while they're still talking or asking.`
 }
 // LLM sampling for natural variety; 0 (EL's default) makes every call word-for-word the same.
 const VOICE_TEMPERATURE = 0.5
