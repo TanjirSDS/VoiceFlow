@@ -66,9 +66,10 @@ export interface ElevenLabsEngineOpts {
 // use its KB at all. Retrieval adds ~250 ms per turn. Chunk/length caps keep per-turn
 // context small for voice. https://elevenlabs.io/docs/eleven-agents/customization/knowledge-base/rag
 const RAG_MODEL = 'e5_mistral_7b_instruct'
-// 5 chunks / 8k chars per turn: on the SDS demo call, 8 / 15k made the model read
-// ~15k chars of context before every answer (LLM first-byte 1.2-2.8 s).
-const RAG = { enabled: true, max_retrieved_rag_chunks_count: 5, max_documents_length: 8000 }
+// 8 chunks / 24k chars per turn. EL chunks run ~2.5-4k chars, so the old 8k cap fitted only
+// 2 chunks and cut specifics (SDS KB test calls, 2026-10-26). On gpt-4.1-mini, 24k cost
+// ~+150 ms median to first audio (1.3 -> 1.45 s). Sent on every attach, so it is the budget.
+const RAG = { enabled: true, max_retrieved_rag_chunks_count: 8, max_documents_length: 24000 }
 
 // Neutral acknowledgements only: a filler fires on ANY slow turn — after "I'm busy" or
 // "don't call me" too — so "Good question" / "Let me check that" sounded robotic (seen in
