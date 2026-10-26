@@ -2120,3 +2120,15 @@ ever sees — rendered a broken image.
   36 vs 37; pricing guardrail 17/17 free-plan replies pass.
 - The SDS demo agent's own prompt/flow changes (price only when asked, prices as count ranges,
   calmer openers, no End edges) are applied by ~/vf-sds-demo/human2, not by this code.
+
+### SDS Manager KB (Oct 2026) on the demo agent + RAG budget 8 / 24k (2026-10-26)
+- docs/knowledge-base/sds-manager (14 docs, PR #55) is attached to the SDS demo agent NEXT TO
+  its 43 older docs (57 total). Uploaded by ~/vf-sds-demo/kb-2026-10 (not this code).
+- RAG per turn raised to 8 chunks / 24k chars. EL chunks run ~2.5-4k chars, so the 8k cap fitted
+  only 2 chunks and `5 chunks` was never reached; specifics (e.g. the code-resend wait) were cut.
+  Measured on gpt-4.1-mini, 4 scripted calls each: median first audio 1.3 -> 1.45 s. The 5 / 8k
+  cut above was measured on gemini-2.5-flash. RAG is sent on every attach, so this IS the budget.
+- EL's /knowledge-base/file renders markdown to HTML and back for EVERY file type (text/plain
+  too): `<placeholder>` text vanishes ("Imported <n> of <x>" -> "Imported  of ") and ordered
+  lists renumber to "1.". /knowledge-base/text stores verbatim. createKnowledgeDoc's file path
+  has this ceiling for any uploaded .md/.txt that contains angle brackets.
