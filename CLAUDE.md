@@ -2132,3 +2132,28 @@ ever sees — rendered a broken image.
   too): `<placeholder>` text vanishes ("Imported <n> of <x>" -> "Imported  of ") and ordered
   lists renumber to "1.". /knowledge-base/text stores verbatim. createKnowledgeDoc's file path
   has this ceiling for any uploaded .md/.txt that contains angle brackets.
+
+### Natural conversation v3 (2026-11-06)
+- A real call to the SDS demo number (conv_3701…, 2026-10-16) sounded canned; a scripted replay
+  reproduced it 2/2. Causes in this code: phoneStyle handed the model a menu of exact phrases
+  (default reactions "Oh, gotcha." / "Mm, okay." / "Ah, right." or the learned filler phrases, plus
+  "Oh, sure." / "Got it." / "Perfect."), so most replies opened with one (73% of turns); no rule for
+  "I think you're wrong"; no "one detail at a time" (the message path asked for five fields at once).
+  Causes in the demo agent's own prompt, fixed by ~/vf-sds-demo/human3 (not this code): a literal
+  "anything else I can help with?" instruction, a stale price table (600 SDSs quoted $2,064, site
+  says $1,468) and no security facts (it said "SOC 2 certified"; SDS Manager has ISO 27001/27017/27018).
+- phoneStyle v3 replaces the whole block (it was measured as one unit): no phrase menu, answer
+  first, ONE sentence per turn, end on the answer with a period instead of a check-in, details one
+  at a time with read-backs, a correction rule (check first; keep a correct fact kindly, own a wrong
+  one at once), never guess, one line of rhythm examples marked "never reuse the wording". The calm
+  "Have a great day." goodbye, end_call timing and barge-in lines are kept. No "!" anywhere in it.
+- call.fillerPhrases no longer reaches the prompt (phoneStyle keeps its parameter, unused): offered
+  as openers it is the menu again. The newest learned phrase is still the slow-answer filler.
+- Measured with the demo prompt v14 on an agent copy, 9 replayed calls per round, base = live v13:
+  median words/turn 41 -> 21, tag-question endings 6 -> 0, turns ending in "?" 75% -> 31%, top
+  opener "oh" 19% -> "thanks" 13%, fact violations 21 -> 3 (all "anything else"), gpt-4.1 judge
+  70.8 -> 74.7 (about ±7 per call, so borderline), median first audio 1303 -> 1312 ms.
+- A rules-only rewrite without examples made replies LONGER (41 -> 49 words/turn) and scored worse;
+  the short Q→A examples are what shortened them. Re-measure before editing this block.
+- Every agent gets v3 on its next prompt save. Not yet run on v3: the outbound, opt-out, support and
+  interrupt scenarios.

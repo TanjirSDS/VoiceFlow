@@ -598,26 +598,36 @@ describe('human phone speech', () => {
     // a real call hung up in the same reply that asked "…, right?"
     expect(prompt.built_in_tools.end_call.description).toContain('Never use it in a reply that asks a question')
     // spoken read-backs: phone numbers in groups, emails as words (simulated calls read digit by digit)
-    expect(prompt.prompt).toContain('phone numbers in small groups')
-    expect(prompt.prompt).toContain('never two questions joined with "and"')
+    expect(prompt.prompt).toContain('Phone numbers in small groups')
+    expect(prompt.prompt).toContain('emails as "jane dot doe at acme dot com"')
     // calm goodbye: "!" made the voice sound over-excited on a real call
-    expect(prompt.prompt).toContain('then "Have a great day." Say it in a calm, even voice with no exclamation marks')
+    expect(prompt.prompt).toContain('then "Have a great day."')
+    expect(prompt.prompt).toContain('Say it in a calm, even voice with no exclamation marks')
     expect(prompt.prompt).not.toContain('warm goodbye')
+    expect(prompt.prompt).not.toContain('!') // an example with "!" gets copied, and the voice hypes it
     // v2, from two real calls that sounded robotic (2026-10-15)
-    expect(prompt.prompt).toContain('Answer exactly what they just asked before anything else')
-    expect(prompt.prompt).toContain("Never ask something they've already told you")
-    expect(prompt.prompt).toContain('"Sorry, go ahead, I\'m listening."')
-    expect(prompt.prompt).toContain("don't guess: ask them to say it again")
-    expect(prompt.prompt).toContain('Be warm and empathetic')
-    expect(prompt.prompt).not.toContain('Start most replies with a quick reaction')
+    expect(prompt.prompt).toContain("Keep track of everything they've told you; never ask for it again")
+    expect(prompt.prompt).toContain("Didn't catch it, or it's cut off: ask them to say it again")
+    expect(prompt.prompt).toContain("If they talk over you, you've already stopped")
+    // v3, from a real call that sounded canned (2026-11-06)
+    expect(prompt.prompt).toContain('Answer first: your first words are the answer')
+    expect(prompt.prompt).toContain('One idea per turn: ONE sentence')
+    expect(prompt.prompt).toContain('Details (name, email, phone, a time) always one at a time')
+    expect(prompt.prompt).toContain('If they say you got something wrong, first check it against what you know')
+    expect(prompt.prompt).toContain('never change a correct fact because they pushed')
+    // no menu of exact openers (every reply started with one) and no check-in to answer
+    expect(prompt.prompt).not.toMatch(/Oh, gotcha|Mm, okay|Ah, right|Oh, sure|"Got it\."|"Perfect\."|or with a quick/)
+    expect(prompt.prompt).not.toMatch(/anything else I can help/i)
+    expect(prompt.prompt.split('## How you speak (live phone call)')).toHaveLength(2) // exactly once
     // a save that doesn't carry the prompt leaves all three alone (PATCH deep-merges)
     const other = (await patchBody({ call: { maxDurationSecs: 300 } })).conversation_config.agent.prompt
     expect(['prompt', 'temperature', 'built_in_tools'].some((k) => k in other)).toBe(false)
   })
 
-  it('learned filler phrases become the reply openers; the newest is the slow-answer filler', async () => {
+  it('learned filler phrases are not a menu of reply openers; the newest is the slow-answer filler', async () => {
     const body = await patchBody({ systemPrompt: 'x', call: { fillers: true, fillerPhrases: ['Oh, gotcha.', 'Okay.'] } })
-    expect(body.conversation_config.agent.prompt.prompt).toContain('or with a quick "Oh, gotcha.", "Okay.".')
+    const plain = await patchBody({ systemPrompt: 'x' })
+    expect(body.conversation_config.agent.prompt.prompt).toBe(plain.conversation_config.agent.prompt.prompt)
     const soft = body.conversation_config.turn.soft_timeout_config
     // EL raises the max to the number of phrases, so never more than two (no stacked fillers)
     expect([soft.message, ...soft.additional_soft_timeout_messages]).toEqual(['Oh, gotcha.', 'Right, one sec.'])
