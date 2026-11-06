@@ -2142,18 +2142,30 @@ ever sees — rendered a broken image.
   Causes in the demo agent's own prompt, fixed by ~/vf-sds-demo/human3 (not this code): a literal
   "anything else I can help with?" instruction, a stale price table (600 SDSs quoted $2,064, site
   says $1,468) and no security facts (it said "SOC 2 certified"; SDS Manager has ISO 27001/27017/27018).
-- phoneStyle v3 replaces the whole block (it was measured as one unit): no phrase menu, answer
-  first, ONE sentence per turn, end on the answer with a period instead of a check-in, details one
-  at a time with read-backs, a correction rule (check first; keep a correct fact kindly, own a wrong
-  one at once), never guess, one line of rhythm examples marked "never reuse the wording". The calm
-  "Have a great day." goodbye, end_call timing and barge-in lines are kept. No "!" anywhere in it.
+- phoneStyle is ~/vf-sds-demo/human3/style-v3.txt (v14.2) byte for byte; a test pins its sha256
+  (3bbe17f8…) because the apply script's EXPECTED_SHA (style + demo prompt v14.2 = 609c8e10…) depends
+  on it. Re-measure before editing the block, then update both.
+- LESSON (3 rounds): any exact phrase in the block becomes a canned opener. v3's menu-free rewrite
+  still carried one ("Fair to double-check", v14.1) and it opened 4 of 4 correction turns; "quietly
+  re-check" was spoken as "Let me double-check that"; a quoted caller phrase was read to the caller.
+  So the block describes behaviour and quotes only caller words, check-ins to drop, read-back formats
+  and the fixed goodbye (a test enforces that list). Bans fail, described replacements work; word
+  caps are ignored. No "[tag]" anywhere: eleven_v4_turbo with expressive mode performs them.
+- v14.2 rules: answer first; one sentence; at most one question, as the last sentence; check the
+  whole call before asking (no re-asks); details one at a time, read back as statements; corrections
+  re-checked "in your head" and answered with the fact, no set phrase; someone's follow-up at most
+  once per call; frustrated callers get a few words about their point first; after their bye, nothing
+  new (no pitch, offer, reminder or question), then "Have a great day.". "Say it calmly" was removed
+  in round 3; goodbye pitch was not re-measured after that (the no-"!" rule stays).
 - call.fillerPhrases no longer reaches the prompt (phoneStyle keeps its parameter, unused): offered
   as openers it is the menu again. The newest learned phrase is still the slow-answer filler.
-- Measured with the demo prompt v14 on an agent copy, 9 replayed calls per round, base = live v13:
-  median words/turn 41 -> 21, tag-question endings 6 -> 0, turns ending in "?" 75% -> 31%, top
-  opener "oh" 19% -> "thanks" 13%, fact violations 21 -> 3 (all "anything else"), gpt-4.1 judge
-  70.8 -> 74.7 (about ±7 per call, so borderline), median first audio 1303 -> 1312 ms.
-- A rules-only rewrite without examples made replies LONGER (41 -> 49 words/turn) and scored worse;
-  the short Q→A examples are what shortened them. Re-measure before editing this block.
-- Every agent gets v3 on its next prompt save. Not yet run on v3: the outbound, opt-out, support and
-  interrupt scenarios.
+- Measured with the demo prompt v14.2 on claude-haiku-5-5 (reasoning none, temp 0.5, v4_turbo,
+  Jerry B), EL copy vf-v142-design, 10 replayed calls + 4 verification calls: judge 78.9 (v14.1
+  77.1, base 70.8); by transcript read: re-asks 0 (judge counts 2), specialist hand-offs max 2 per
+  call (v14.1: 5), demo offers 4 in 10 calls (v14.1: 2 per hostile call), in-between price counts
+  17/17 right, 3 tags in 10 calls (v14.1: 12), pitch after goodbye 0/10 (1/4 in verification), sim
+  first audio median 1054 ms.
+  Still open: 2 sub-100 price slips (one spoken then self-corrected), "I'm not wrong" defensiveness 2/2 pushback,
+  judge target 85.8 not met. sim-call sends typed lines, so ASR/turn-taking latency is not measured.
+- Every VoiceFlow agent gets this block on its next prompt save, not just the demo agent; it was
+  only measured with the SDS demo prompt.

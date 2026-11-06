@@ -1,6 +1,6 @@
-import { createHmac } from 'node:crypto'
+import { createHash, createHmac } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
-import { ElevenLabsEngine } from './elevenlabs'
+import { ElevenLabsEngine, phoneStyle } from './elevenlabs'
 import { KnowledgeIndexError } from './types'
 import fixture from '../fixtures/post-call-transcription.json'
 
@@ -600,28 +600,55 @@ describe('human phone speech', () => {
     // spoken read-backs: phone numbers in groups, emails as words (simulated calls read digit by digit)
     expect(prompt.prompt).toContain('Phone numbers in small groups')
     expect(prompt.prompt).toContain('emails as "jane dot doe at acme dot com"')
-    // calm goodbye: "!" made the voice sound over-excited on a real call
-    expect(prompt.prompt).toContain('then "Have a great day."')
-    expect(prompt.prompt).toContain('Say it in a calm, even voice with no exclamation marks')
+    // calm goodbye: "!" made the voice sound over-excited on a real call; nothing new after their bye
+    expect(prompt.prompt).toContain('then "Have a great day." After their bye, add nothing new: no pitch, offer, reminder or question.')
     expect(prompt.prompt).not.toContain('warm goodbye')
     expect(prompt.prompt).not.toContain('!') // an example with "!" gets copied, and the voice hypes it
     // v2, from two real calls that sounded robotic (2026-10-15)
-    expect(prompt.prompt).toContain("Keep track of everything they've told you; never ask for it again")
     expect(prompt.prompt).toContain("Didn't catch it, or it's cut off: ask them to say it again")
     expect(prompt.prompt).toContain("If they talk over you, you've already stopped")
     // v3, from a real call that sounded canned (2026-11-06)
     expect(prompt.prompt).toContain('Answer first: your first words are the answer')
     expect(prompt.prompt).toContain('One idea per turn: ONE sentence')
-    expect(prompt.prompt).toContain('Details (name, email, phone, a time) always one at a time')
-    expect(prompt.prompt).toContain('If they say you got something wrong, first check it against what you know')
-    expect(prompt.prompt).toContain('never change a correct fact because they pushed')
-    // no menu of exact openers (every reply started with one) and no check-in to answer
-    expect(prompt.prompt).not.toMatch(/Oh, gotcha|Mm, okay|Ah, right|Oh, sure|"Got it\."|"Perfect\."|or with a quick/)
     expect(prompt.prompt).not.toMatch(/anything else I can help/i)
     expect(prompt.prompt.split('## How you speak (live phone call)')).toHaveLength(2) // exactly once
     // a save that doesn't carry the prompt leaves all three alone (PATCH deep-merges)
     const other = (await patchBody({ call: { maxDurationSecs: 300 } })).conversation_config.agent.prompt
     expect(['prompt', 'temperature', 'built_in_tools'].some((k) => k in other)).toBe(false)
+  })
+
+  // Round 3 (v14.2, 2026-11-06), from a hostile review of v14.1 on claude-haiku-5-5: any exact phrase in
+  // the block becomes a canned opener ("Fair to double-check" opened 4 of 4 correction turns), bracket
+  // tags get performed by eleven_v4_turbo's expressive mode, and it handed off to "a specialist" 7-8 times
+  // in one call. The block is what was measured, byte for byte; re-measure before editing it.
+  it('speaks the measured round-3 style: described behaviour, no scripted wording', async () => {
+    const style = phoneStyle()
+    // no exact-phrase menu: the only quoted words are things callers say, things to drop, read-back
+    // formats and the fixed goodbye; every scripted reply wording (incl. "Fair to double-check") is gone
+    expect(style).not.toMatch(/Oh, gotcha|Mm, okay|Ah, right|Oh, sure|Got it\.|Perfect\.|Fair to double-check|You're right, sorry|double-check|never reuse the wording|→/)
+    expect(new Set(style.match(/"[^"]*"/g))).toEqual(new Set([
+      '"want me to...?"', '"does that help?"', '"anything else?"', // check-ins to drop
+      '"five five five, one two three, four five six seven"', '"jane dot doe at acme dot com"', // read-back formats
+      '"hello?"', '"wait"', '"mm-hmm"', '"hold on"', '"that\'s all"', '"um"', '"so"', // caller words / fillers
+      '"Thanks for calling."', '"Thanks for your time."', '"Have a great day."', // the fixed goodbye
+    ]))
+    // no audio tags: none written, and told not to write any
+    expect(style).not.toMatch(/\[[^\]]*\]/)
+    expect(style).toContain('never a tag or stage direction in square brackets')
+    // never re-ask, one question at most, details one at a time
+    expect(style).toContain("Before asking anything, check the whole call, their first sentence included: what they've said, you use, never ask for.")
+    expect(style).toContain('one at most, as your last sentence')
+    expect(style).toContain('Details (name, email, phone, a time) one at a time: ask for one')
+    expect(style).toContain("given several at once, say them back and ask only what's missing")
+    // corrections described, not scripted
+    expect(style).toContain('Told you got something wrong: re-check it in your head, then answer with the fact itself.')
+    expect(style).toContain('never change a correct fact because they pushed')
+    expect(style).toContain('No set phrase for either.')
+    // a specialist / follow-up at most once per call
+    expect(style).toContain("Offer someone's follow-up at most once per call, only for something they need that you can't answer")
+    expect(style.match(/follow-up/g)).toHaveLength(2) // the cap and the goodbye, no other hand-off line
+    // byte for byte what was measured (~/vf-sds-demo/human3/style-v3.txt); the apply script's EXPECTED_SHA depends on it
+    expect(createHash('sha256').update(style).digest('hex')).toBe('3bbe17f8ce729990c6341e00d33c1ec40b7097ba3997feb9838f08687abecd69')
   })
 
   it('learned filler phrases are not a menu of reply openers; the newest is the slow-answer filler', async () => {
@@ -636,7 +663,10 @@ describe('human phone speech', () => {
   })
 
   it('getAgent returns the owner\'s prompt without the added style', async () => {
-    const sent = (await patchBody({ systemPrompt: 'You are Acme.' })).conversation_config.agent.prompt.prompt
+    // the owner's own "## …" headings survive (the SDS demo prompt has "## Guardrails"); only the style goes
+    const owner = 'You are Acme.\n\n## Guardrails\n- Quote the paid plan.'
+    const sent = (await patchBody({ systemPrompt: owner })).conversation_config.agent.prompt.prompt
+    expect(sent).toBe(`${owner}\n\n${phoneStyle()}`)
     const orig = globalThis.fetch
     globalThis.fetch = (async () => ({
       ok: true,
@@ -645,7 +675,7 @@ describe('human phone speech', () => {
       text: async () => '',
     })) as unknown as typeof fetch
     try {
-      expect((await engine.getAgent('agent_1')).systemPrompt).toBe('You are Acme.')
+      expect((await engine.getAgent('agent_1')).systemPrompt).toBe(owner)
     } finally {
       globalThis.fetch = orig
     }
