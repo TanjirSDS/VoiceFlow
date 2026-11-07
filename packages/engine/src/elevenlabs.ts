@@ -104,7 +104,7 @@ const STYLE_HEADING = '## How you speak (live phone call)'
 // re-asks, specialist hand-offs at most 2 per call (v14.1: 5), no correction opener repeated.
 // Round 4 (v14.3 = this text, with the SDS demo prompt v14.3 on claude-haiku-5-5, expressive_mode off,
 // 19-call suite): disputes show the working instead of "I'm not wrong" (0 defensive lines), one idea
-// per reply, a little warmth for frustrated callers. Judge 78.6 (v14.2 74.1), 0 fact errors.
+// per reply, a little warmth for frustrated callers. Judge 78.6 (v14.2 74.1); see the CLAUDE.md log.
 // No square-bracket tags: v4_turbo performs "[excited]" in either expressive mode, and the LLM only
 // stopped writing them with expressive_mode off (0 in 32 calls); the rule here is the described backup.
 // `learned` (call.fillerPhrases) is deliberately unused here: offered as openers it becomes the menu
