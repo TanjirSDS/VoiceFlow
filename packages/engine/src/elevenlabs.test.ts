@@ -601,7 +601,7 @@ describe('human phone speech', () => {
     expect(prompt.prompt).toContain('Phone numbers in small groups')
     expect(prompt.prompt).toContain('emails as "jane dot doe at acme dot com"')
     // calm goodbye: "!" made the voice sound over-excited on a real call; nothing new after their bye
-    expect(prompt.prompt).toContain('then "Have a great day." After their bye, add nothing new: no pitch, offer, reminder or question.')
+    expect(prompt.prompt).toContain('then "Have a great day." After their bye, add nothing new, even when the bye came with an answer to your question: no pitch, offer, reminder or question.')
     expect(prompt.prompt).not.toContain('warm goodbye')
     expect(prompt.prompt).not.toContain('!') // an example with "!" gets copied, and the voice hypes it
     // v2, from two real calls that sounded robotic (2026-10-15)
@@ -609,7 +609,7 @@ describe('human phone speech', () => {
     expect(prompt.prompt).toContain("If they talk over you, you've already stopped")
     // v3, from a real call that sounded canned (2026-11-06)
     expect(prompt.prompt).toContain('Answer first: your first words are the answer')
-    expect(prompt.prompt).toContain('One idea per turn: ONE sentence')
+    expect(prompt.prompt).toContain('One idea per reply: usually one short sentence, two at most, each about a breath long.')
     expect(prompt.prompt).not.toMatch(/anything else I can help/i)
     expect(prompt.prompt.split('## How you speak (live phone call)')).toHaveLength(2) // exactly once
     // a save that doesn't carry the prompt leaves all three alone (PATCH deep-merges)
@@ -619,9 +619,10 @@ describe('human phone speech', () => {
 
   // Round 3 (v14.2, 2026-11-06), from a hostile review of v14.1 on claude-haiku-5-5: any exact phrase in
   // the block becomes a canned opener ("Fair to double-check" opened 4 of 4 correction turns), bracket
-  // tags get performed by eleven_v4_turbo's expressive mode, and it handed off to "a specialist" 7-8 times
-  // in one call. The block is what was measured, byte for byte; re-measure before editing it.
-  it('speaks the measured round-3 style: described behaviour, no scripted wording', async () => {
+  // tags get performed by eleven_v4_turbo, and it handed off to "a specialist" 7-8 times in one call.
+  // Round 4 (v14.3, 2026-11-07): "I'm not wrong about the price" on disputes, 30+ word replies, cold
+  // with frustrated callers. The block is what was measured, byte for byte; re-measure before editing it.
+  it('speaks the measured round-4 style: described behaviour, no scripted wording', async () => {
     const style = phoneStyle()
     // no exact-phrase menu: the only quoted words are things callers say, things to drop, read-back
     // formats and the fixed goodbye; every scripted reply wording (incl. "Fair to double-check") is gone
@@ -634,21 +635,25 @@ describe('human phone speech', () => {
     ]))
     // no audio tags: none written, and told not to write any
     expect(style).not.toMatch(/\[[^\]]*\]/)
-    expect(style).toContain('never a tag or stage direction in square brackets')
+    expect(style).toContain('the voice reads your text exactly as written and brings its own warmth, so any warmth comes from the words you choose, never from a tag or stage direction in square brackets')
     // never re-ask, one question at most, details one at a time
     expect(style).toContain("Before asking anything, check the whole call, their first sentence included: what they've said, you use, never ask for.")
     expect(style).toContain('one at most, as your last sentence')
     expect(style).toContain('Details (name, email, phone, a time) one at a time: ask for one')
     expect(style).toContain("given several at once, say them back and ask only what's missing")
     // corrections described, not scripted
-    expect(style).toContain('Told you got something wrong: re-check it in your head, then answer with the fact itself.')
-    expect(style).toContain('never change a correct fact because they pushed')
+    expect(style).toContain('Told you got something wrong: re-check it in your head first.')
+    // round 4: no defending ("I'm not wrong"); show the working, never cave on a correct fact
+    expect(style).toContain("Right: leave who's right out of it and show the working instead, in fresh words: what they told you, what that gives, and where they can see it for themselves")
+    expect(style).toContain('never changing a correct fact because they pushed')
     expect(style).toContain('No set phrase for either.')
     // a specialist / follow-up at most once per call
     expect(style).toContain("Offer someone's follow-up at most once per call, only for something they need that you can't answer")
     expect(style.match(/follow-up/g)).toHaveLength(2) // the cap and the goodbye, no other hand-off line
-    // byte for byte what was measured (~/vf-sds-demo/human3/style-v3.txt); the apply script's EXPECTED_SHA depends on it
-    expect(createHash('sha256').update(style).digest('hex')).toBe('3bbe17f8ce729990c6341e00d33c1ec40b7097ba3997feb9838f08687abecd69')
+    // round 4: a little warmth for a frustrated caller, about their point, never about itself
+    expect(style).toContain("let a little real warmth through first, a few easy words on their side about what's bothering them (their point, not a stock line, never about yourself)")
+    // byte for byte what was measured (~/vf-sds-demo/human3/style-v3.txt, v14.3); the apply script's EXPECTED_SHA depends on it
+    expect(createHash('sha256').update(style).digest('hex')).toBe('6bcaa642ed6ede7605e7d69894987e589a562c1ad4b8d861043b3b076b9197c5')
   })
 
   it('learned filler phrases are not a menu of reply openers; the newest is the slow-answer filler', async () => {

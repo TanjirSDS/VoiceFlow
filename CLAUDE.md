@@ -2142,15 +2142,23 @@ ever sees — rendered a broken image.
   Causes in the demo agent's own prompt, fixed by ~/vf-sds-demo/human3 (not this code): a literal
   "anything else I can help with?" instruction, a stale price table (600 SDSs quoted $2,064, site
   says $1,468) and no security facts (it said "SOC 2 certified"; SDS Manager has ISO 27001/27017/27018).
-- phoneStyle is ~/vf-sds-demo/human3/style-v3.txt (v14.2) byte for byte; a test pins its sha256
-  (3bbe17f8…) because the apply script's EXPECTED_SHA (style + demo prompt v14.2 = 609c8e10…) depends
-  on it. Re-measure before editing the block, then update both.
+- phoneStyle is ~/vf-sds-demo/human3/style-v3.txt (v14.3, round 4) byte for byte; a test pins its
+  sha256 (6bcaa642…) because the apply script's EXPECTED_SHA (style + demo prompt v14.3 = 37dac81d…)
+  depends on it. Re-measure before editing the block, then update both.
+- Round 4 (v14.3, 2026-11-07): disputes "leave who's right out of it and show the working" (fixed
+  "I'm not wrong about the price", 0 defensive lines); "One idea per reply: usually one short
+  sentence, two at most"; a little warmth for frustrated callers, never about itself; the tag rule
+  became a described replacement. The demo agent also runs expressive_mode=false: v4_turbo performs a
+  "[tag]" in EITHER mode, but the LLM wrote 0 tags in 32 calls with it off vs 4 in 8 with it on (EL
+  config, set by the apply script from ~/vf-sds-demo/human3/EXPECTED_CONFIG.json, not by this code).
+  19-call suite: judge 78.6 (v14.2 74.1), 0 fact errors, real-speech heard median 1310 ms vs a live
+  duplicate's 1498 ms in the same window.
 - LESSON (3 rounds): any exact phrase in the block becomes a canned opener. v3's menu-free rewrite
   still carried one ("Fair to double-check", v14.1) and it opened 4 of 4 correction turns; "quietly
   re-check" was spoken as "Let me double-check that"; a quoted caller phrase was read to the caller.
   So the block describes behaviour and quotes only caller words, check-ins to drop, read-back formats
   and the fixed goodbye (a test enforces that list). Bans fail, described replacements work; word
-  caps are ignored. No "[tag]" anywhere: eleven_v4_turbo with expressive mode performs them.
+  caps are ignored. No "[tag]" anywhere: eleven_v4_turbo performs them, in either expressive mode.
 - v14.2 rules: answer first; one sentence; at most one question, as the last sentence; check the
   whole call before asking (no re-asks); details one at a time, read back as statements; corrections
   re-checked "in your head" and answered with the fact, no set phrase; someone's follow-up at most
