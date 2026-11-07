@@ -2132,3 +2132,51 @@ ever sees — rendered a broken image.
   too): `<placeholder>` text vanishes ("Imported <n> of <x>" -> "Imported  of ") and ordered
   lists renumber to "1.". /knowledge-base/text stores verbatim. createKnowledgeDoc's file path
   has this ceiling for any uploaded .md/.txt that contains angle brackets.
+
+### Natural conversation v3 (2026-11-06)
+- A real call to the SDS demo number (conv_3701…, 2026-10-16) sounded canned; a scripted replay
+  reproduced it 2/2. Causes in this code: phoneStyle handed the model a menu of exact phrases
+  (default reactions "Oh, gotcha." / "Mm, okay." / "Ah, right." or the learned filler phrases, plus
+  "Oh, sure." / "Got it." / "Perfect."), so most replies opened with one (73% of turns); no rule for
+  "I think you're wrong"; no "one detail at a time" (the message path asked for five fields at once).
+  Causes in the demo agent's own prompt, fixed by ~/vf-sds-demo/human3 (not this code): a literal
+  "anything else I can help with?" instruction, a stale price table (600 SDSs quoted $2,064, site
+  says $1,468) and no security facts (it said "SOC 2 certified"; SDS Manager has ISO 27001/27017/27018).
+- phoneStyle is ~/vf-sds-demo/human3/style-v3.txt (v14.3, round 4) byte for byte; a test pins its
+  sha256 (6bcaa642…) because the apply script's EXPECTED_SHA (style + demo prompt = b441c82f… since
+  2026-11-07 round 5, which added the owner-confirmed "an SDS counts once per location" fact; v14.3 was
+  37dac81d…) depends on it. Re-measure before editing the block, then update both.
+- Round 4 (v14.3, 2026-11-07): disputes "leave who's right out of it and show the working" (fixed
+  "I'm not wrong about the price", 0 defensive lines); "One idea per reply: usually one short
+  sentence, two at most"; a little warmth for frustrated callers, never about itself; the tag rule
+  became a described replacement. The demo agent also runs expressive_mode=false: v4_turbo performs a
+  "[tag]" in EITHER mode, but the LLM wrote 0 tags in 32 calls with it off vs 4 in 8 with it on (EL
+  config, set by the apply script from ~/vf-sds-demo/human3/EXPECTED_CONFIG.json, not by this code).
+  19-call suite: judge 78.6 (v14.2 74.1), 0 fact-check flags, real-speech heard median 1310 ms vs a
+  live duplicate's 1498 ms in the same window. Not zero errors overall: the final review's hostile
+  calls got 620 SDSs quoted at $1,468 (right: $1,768) — prompt-table prices keep slipping at new
+  counts, which is why prices move into code (price lookup tool, PR #58).
+- LESSON (3 rounds): any exact phrase in the block becomes a canned opener. v3's menu-free rewrite
+  still carried one ("Fair to double-check", v14.1) and it opened 4 of 4 correction turns; "quietly
+  re-check" was spoken as "Let me double-check that"; a quoted caller phrase was read to the caller.
+  So the block describes behaviour and quotes only caller words, check-ins to drop, read-back formats
+  and the fixed goodbye (a test enforces that list). Bans fail, described replacements work; word
+  caps are ignored. No "[tag]" anywhere: eleven_v4_turbo performs them, in either expressive mode.
+- v14.2 rules: answer first; one sentence; at most one question, as the last sentence; check the
+  whole call before asking (no re-asks); details one at a time, read back as statements; corrections
+  re-checked "in your head" and answered with the fact, no set phrase; someone's follow-up at most
+  once per call; frustrated callers get a few words about their point first; after their bye, nothing
+  new (no pitch, offer, reminder or question), then "Have a great day.". "Say it calmly" was removed
+  in round 3; goodbye pitch was not re-measured after that (the no-"!" rule stays).
+- call.fillerPhrases no longer reaches the prompt (phoneStyle keeps its parameter, unused): offered
+  as openers it is the menu again. The newest learned phrase is still the slow-answer filler.
+- Measured with the demo prompt v14.2 on claude-haiku-5-5 (reasoning none, temp 0.5, v4_turbo,
+  Jerry B), EL copy vf-v142-design, 10 replayed calls + 4 verification calls: judge 78.9 (v14.1
+  77.1, base 70.8); by transcript read: re-asks 0 (judge counts 2), specialist hand-offs max 2 per
+  call (v14.1: 5), demo offers 4 in 10 calls (v14.1: 2 per hostile call), in-between price counts
+  17/17 right, 3 tags in 10 calls (v14.1: 12), pitch after goodbye 0/10 (1/4 in verification), sim
+  first audio median 1054 ms.
+  Still open: 2 sub-100 price slips (one spoken then self-corrected), "I'm not wrong" defensiveness 2/2 pushback,
+  judge target 85.8 not met. sim-call sends typed lines, so ASR/turn-taking latency is not measured.
+- Every VoiceFlow agent gets this block on its next prompt save, not just the demo agent; it was
+  only measured with the SDS demo prompt.
