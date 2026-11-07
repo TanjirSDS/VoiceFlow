@@ -55,6 +55,15 @@ describe('normalizeStoredConfig', () => {
     }
   })
 
+  // Every save re-normalizes the row, so dropping priceTable here would wipe it on the next Save.
+  it('keeps a price table, last, and re-normalizes byte-identically', () => {
+    const priceTable = { plans: { Basic: [{ up_to: 100, annual_usd: 228 }] }, custom_quote_above: 100 }
+    const once = normalizeStoredConfig({ agentType: 'single', template: null, seed: profile, agentConfig, priceTable })
+    expect(once.priceTable).toEqual(priceTable)
+    expect(Object.keys(once)).toEqual(['agentType', 'template', 'seed', 'agentConfig', 'priceTable'])
+    expect(JSON.stringify(normalizeStoredConfig(once))).toBe(JSON.stringify(once))
+  })
+
   it('safe variant returns null for null/garbage instead of throwing', () => {
     expect(normalizeStoredConfigSafe(null)).toBeNull()
     expect(normalizeStoredConfigSafe({ nope: 1 })).toBeNull()
