@@ -26,7 +26,8 @@
     "backfill-contacts": "tsx scripts/backfill-contacts.ts",
     "migrate-numbers": "tsx scripts/migrate-numbers-to-subaccounts.ts",
     "adopt-number": "tsx scripts/adopt-twilio-number.ts",
-    "verify-isolation": "tsx scripts/verify-subaccount-isolation.ts"
+    "verify-isolation": "tsx scripts/verify-subaccount-isolation.ts",
+    "set-price-table": "tsx scripts/set-price-table.ts"
   },
   "dependencies": {
     "@voiceflow/db": "*",

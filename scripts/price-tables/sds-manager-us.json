@@ -1,0 +1,48 @@
+{
+  "_note": "SDS Manager US prices (sdsmanager.com/us/pricing, verified 2026-11-06). Apply: npm run set-price-table -- --agent <voiceflow agent uuid> --file scripts/price-tables/sds-manager-us.json [--apply]. The site has no PRO 10,000 row, so PRO above 8,000 is a custom quote.",
+  "default_plan": "Premium",
+  "custom_quote_above": 10000,
+  "plans": {
+    "Premium": [
+      { "up_to": 100, "annual_usd": 468 },
+      { "up_to": 200, "annual_usd": 668 },
+      { "up_to": 400, "annual_usd": 1068 },
+      { "up_to": 600, "annual_usd": 1468 },
+      { "up_to": 800, "annual_usd": 1768 },
+      { "up_to": 1000, "annual_usd": 2068 },
+      { "up_to": 1500, "annual_usd": 2568 },
+      { "up_to": 2000, "annual_usd": 3068 },
+      { "up_to": 4000, "annual_usd": 4668 },
+      { "up_to": 6000, "annual_usd": 6268 },
+      { "up_to": 8000, "annual_usd": 7868 },
+      { "up_to": 10000, "annual_usd": 9468 }
+    ],
+    "Basic": [
+      { "up_to": 100, "annual_usd": 228 },
+      { "up_to": 200, "annual_usd": 276 },
+      { "up_to": 400, "annual_usd": 372 },
+      { "up_to": 600, "annual_usd": 468 },
+      { "up_to": 800, "annual_usd": 540 },
+      { "up_to": 1000, "annual_usd": 612 },
+      { "up_to": 1500, "annual_usd": 732 },
+      { "up_to": 2000, "annual_usd": 852 },
+      { "up_to": 4000, "annual_usd": 1236 },
+      { "up_to": 6000, "annual_usd": 1620 },
+      { "up_to": 8000, "annual_usd": 2004 },
+      { "up_to": 10000, "annual_usd": 2388 }
+    ],
+    "PRO": [
+      { "up_to": 100, "annual_usd": 708 },
+      { "up_to": 200, "annual_usd": 1008 },
+      { "up_to": 400, "annual_usd": 1608 },
+      { "up_to": 600, "annual_usd": 2208 },
+      { "up_to": 800, "annual_usd": 2658 },
+      { "up_to": 1000, "annual_usd": 3108 },
+      { "up_to": 1500, "annual_usd": 3858 },
+      { "up_to": 2000, "annual_usd": 4608 },
+      { "up_to": 4000, "annual_usd": 7008 },
+      { "up_to": 6000, "annual_usd": 9408 },
+      { "up_to": 8000, "annual_usd": 11808 }
+    ]
+  }
+}

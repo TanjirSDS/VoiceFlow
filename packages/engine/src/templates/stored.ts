@@ -22,6 +22,19 @@ export interface StoredAgentConfig {
   template: TemplateKey | null
   seed?: BusinessProfile
   agentConfig: AgentConfig
+  /** Prices the agent quotes through its look_up_price tool (apps/web/lib/price-table.ts)
+   *  instead of reading a table from its prompt. The provider never sees it. */
+  priceTable?: PriceTable
+}
+
+/** Per-agent price list. A count is priced at the FIRST row whose up_to >= count. */
+export interface PriceTable {
+  /** Plan name → rows in ascending up_to order. */
+  plans: Record<string, { up_to: number; annual_usd: number }[]>
+  /** Counts above this (or above a plan's last row) get a custom quote, not a price. */
+  custom_quote_above: number
+  /** Plan priced when the caller doesn't name one. */
+  default_plan?: string
 }
 
 /** Quick-personalize inputs from the create modal (freeform edits come later). */
@@ -58,6 +71,7 @@ export function normalizeStoredConfig(raw: unknown): StoredAgentConfig {
         agentConfig: c.agentConfig,
       }
       if (c.seed) out.seed = c.seed as BusinessProfile
+      if (c.priceTable) out.priceTable = c.priceTable as PriceTable
       return sortSeedLast(out)
     }
     const out: StoredAgentConfig = {
@@ -90,12 +104,16 @@ export function outboundStartNodeId(raw: unknown): string | undefined {
   return normalizeStoredConfigSafe(raw)?.agentConfig.workflow?.outboundStartNodeId
 }
 
-// Fixed field order (agentType, template, seed?, agentConfig) so a normalized row
-// re-normalizes byte-identically — the migrate script's "changed?" check stays honest.
+// Fixed field order (agentType, template, seed?, agentConfig, priceTable?) so a normalized
+// row re-normalizes byte-identically — the migrate script's "changed?" check stays honest.
 function sortSeedLast(c: StoredAgentConfig): StoredAgentConfig {
-  return c.seed
-    ? { agentType: c.agentType, template: c.template, seed: c.seed, agentConfig: c.agentConfig }
-    : { agentType: c.agentType, template: c.template, agentConfig: c.agentConfig }
+  return {
+    agentType: c.agentType,
+    template: c.template,
+    ...(c.seed && { seed: c.seed }),
+    agentConfig: c.agentConfig,
+    ...(c.priceTable && { priceTable: c.priceTable }),
+  }
 }
 
 /**
