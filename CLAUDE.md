@@ -2180,3 +2180,32 @@ ever sees — rendered a broken image.
   judge target 85.8 not met. sim-call sends typed lines, so ASR/turn-taking latency is not measured.
 - Every VoiceFlow agent gets this block on its next prompt save, not just the demo agent; it was
   only measured with the SDS demo prompt.
+
+### Price lookup tool (2026-11-07)
+- WHY: across 4 prompt-tuning rounds the SDS demo agent kept misreading the 36-row price table
+  in its prompt at new counts (620 quoted $1,468, real $1,768; Basic 50 quoted $276, real $228;
+  "ten sixty-eight... no wait"). Prices now come from code.
+- look_up_price → POST /api/tools/price?agent=<uuid> {count, plan?} → {plan, count, annual_usd,
+  spoken} | {plan, count, custom_quote: true} | 200 {error}. Same contract as the calcom tool;
+  the secret check is shared (lib/agent-tools.ts toolSecretOk).
+- Storage: agents.config.priceTable on StoredAgentConfig (not AgentConfig: the provider never
+  sees it), {plans: {name: [{up_to, annual_usd}]}, custom_quote_above, default_plan?}. No
+  migration. normalizeStoredConfig rebuilt the object key by key, so it now carries priceTable
+  (otherwise every Save would drop it). jsonb reorders keys: plan order in prod is not the file's.
+- Lookup (lib/price-table.ts, pure): first row whose up_to >= count; above custom_quote_above or
+  past the plan's last row → custom quote. Plan case-insensitive; omitted → default_plan, else
+  the only plan, else "ask which plan". spoken is how people say prices ("fourteen sixty-eight a
+  year", "seven oh-eight", "two thousand four"); whole dollars up to $999,999.
+- agentTools(agentId, stored) is the agent's FULL tool set (Cal.com if seed.liveBooking, price if
+  priceTable). setAgentTools replaces every tool, so the booking toggle and
+  scripts/set-price-table.ts both pass that list. NOT re-synced: duplicate (the copy keeps
+  priceTable without the tool, as booking did) and rollback (tool stays; route says no price list).
+- Apply: `npm run set-price-table -- --agent <uuid> --file scripts/price-tables/sds-manager-us.json`
+  (dry run; add --apply). DB row + version first, then provider tools. The prompt's own price
+  table is replaced separately.
+- Measured on a copy of the v14.3 candidate (EL client tool answered by this lookup, 10 text
+  sims): 20/20 prices right, 14/14 new counts went through the tool, 2/6 repeats re-called it.
+  Price replies land ~0.85 s later (median first audio 1.94 s vs 1.09 s), and EL's 1.5 s
+  soft-timeout filler "Mm-hmm." fills the gap, so most priced replies start with it.
+- EL refuses (409) to delete a tool an agent branch still references, even a deleted agent's;
+  setAgentTools swallows that, so an orphan tool can remain (?force=true deletes it).

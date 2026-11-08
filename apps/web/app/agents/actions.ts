@@ -24,7 +24,7 @@ import {
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { outboundCallDecision } from '../../lib/api-v1/shape'
-import { calcomBookingTool } from '../../lib/calcom'
+import { agentTools } from '../../lib/agent-tools'
 import { dialDecision } from '../../lib/concurrency'
 import { appUrl } from '../../lib/email'
 import { makeEngine } from '../../lib/engine'
@@ -561,14 +561,12 @@ export async function setAgentBookingAction(agentId: string, enabled: boolean) {
     }
 
     const engine = makeEngine(agent.provider)
-    await engine.setAgentTools(
-      agent.provider_agent_id,
-      enabled ? [calcomBookingTool(agentId, appUrl(), env.AGENT_TOOLS_SECRET)] : []
-    )
     const profile: BusinessProfile = { ...stored.seed, liveBooking: enabled }
     const agentConfig = buildAgentConfig('booking', profile)
-    await engine.updateAgent(agent.provider_agent_id, agentConfig)
     const newStored: StoredAgentConfig = { ...stored, seed: profile, agentConfig }
+    // The full set (booking + any price tool): setAgentTools replaces every tool.
+    await engine.setAgentTools(agent.provider_agent_id, agentTools(agentId, newStored, appUrl(), env.AGENT_TOOLS_SECRET))
+    await engine.updateAgent(agent.provider_agent_id, agentConfig)
     const { error: updErr } = await db
       .from('agents')
       .update({ config: newStored, updated_by: email, updated_at: new Date().toISOString() })

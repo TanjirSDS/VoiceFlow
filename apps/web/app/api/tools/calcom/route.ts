@@ -1,8 +1,8 @@
-import { timingSafeEqual } from 'node:crypto'
-import { getEnv, serviceClient } from '@voiceflow/db'
+import { serviceClient } from '@voiceflow/db'
 import { NextResponse, type NextRequest } from 'next/server'
+import { toolSecretOk } from '../../../../lib/agent-tools'
 import { CONSERVATIVE_ZONES, zonesFor } from '../../../../lib/areacode-tz'
-import { createBooking, listSlots, TOOLS_SECRET_HEADER } from '../../../../lib/calcom'
+import { createBooking, listSlots } from '../../../../lib/calcom'
 
 export const runtime = 'nodejs'
 
@@ -12,19 +12,10 @@ export const runtime = 'nodejs'
 // Errors return 200 with {error} so the agent can recover verbally instead of
 // getting a dead tool.
 
-function secretOk(req: NextRequest): boolean {
-  const secret = getEnv().AGENT_TOOLS_SECRET
-  const got = req.headers.get(TOOLS_SECRET_HEADER)
-  if (!secret || !got) return false
-  const a = Buffer.from(got)
-  const b = Buffer.from(secret)
-  return a.length === b.length && timingSafeEqual(a, b)
-}
-
 const speak = (body: Record<string, unknown>) => NextResponse.json(body)
 
 export async function POST(req: NextRequest) {
-  if (!secretOk(req)) return new NextResponse('unauthorized', { status: 401 })
+  if (!toolSecretOk(req)) return new NextResponse('unauthorized', { status: 401 })
 
   const agentId = req.nextUrl.searchParams.get('agent')
   if (!agentId) return speak({ error: 'tool misconfigured: no agent' })

@@ -16,6 +16,7 @@ export {
   outboundStartNodeId,
   scratchAgentConfig,
   type AgentType,
+  type PriceTable,
   type SeedInput,
   type StoredAgentConfig,
 } from './stored'
